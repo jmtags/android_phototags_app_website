@@ -6,6 +6,7 @@ dist/
 desktop.png
 mobile.png
 phototags-*.png
+admin-page.png
 
 .DS_Store
 Thumbs.db

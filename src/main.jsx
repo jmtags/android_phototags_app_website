@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   BadgeCheck,
+  BarChart3,
   Camera,
   ChevronRight,
   Download,
@@ -13,6 +14,10 @@ import {
   Wifi
 } from 'lucide-react';
 import './styles.css';
+
+const ADMIN_USERNAME = 'admin';
+const ADMIN_PASSWORD = 'phototags2026';
+const ANALYTICS_KEY = 'phototags.analytics.v1';
 
 const features = [
   {
@@ -55,7 +60,73 @@ const steps = [
   }
 ];
 
+function getAnalytics() {
+  const fallback = {
+    visits: 0,
+    downloads: 0,
+    firstVisitAt: null,
+    lastVisitAt: null,
+    lastDownloadAt: null
+  };
+
+  try {
+    const stored = JSON.parse(localStorage.getItem(ANALYTICS_KEY));
+    return { ...fallback, ...stored };
+  } catch {
+    return fallback;
+  }
+}
+
+function saveAnalytics(nextAnalytics) {
+  localStorage.setItem(ANALYTICS_KEY, JSON.stringify(nextAnalytics));
+  window.dispatchEvent(new Event('phototags-analytics-updated'));
+}
+
+function trackVisit() {
+  const now = new Date().toISOString();
+  const analytics = getAnalytics();
+  saveAnalytics({
+    ...analytics,
+    visits: analytics.visits + 1,
+    firstVisitAt: analytics.firstVisitAt ?? now,
+    lastVisitAt: now
+  });
+}
+
+function trackDownload() {
+  const now = new Date().toISOString();
+  const analytics = getAnalytics();
+  saveAnalytics({
+    ...analytics,
+    downloads: analytics.downloads + 1,
+    lastDownloadAt: now
+  });
+}
+
+function formatDate(value) {
+  if (!value) {
+    return 'Not recorded yet';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short'
+  }).format(new Date(value));
+}
+
 function App() {
+  const isAdminPage = window.location.pathname === '/admin' || window.location.hash === '#admin';
+
+  useEffect(() => {
+    if (!isAdminPage) {
+      trackVisit();
+    }
+  }, [isAdminPage]);
+
+  if (isAdminPage) {
+    return <AdminPage />;
+  }
+
   return (
     <main className="page-shell">
       <header className="site-header">
@@ -69,7 +140,7 @@ function App() {
           <a href="#printer-support">Printer Support</a>
           <a href="#id-photo">ID Photo Mode</a>
         </nav>
-        <a className="outline-button" href="/PhotoTags.apk" download>
+        <a className="outline-button" href="/PhotoTags.apk" download onClick={trackDownload}>
           <Download size={18} />
           Download APK
         </a>
@@ -84,7 +155,7 @@ function App() {
             Built for events, school IDs, and quick photo keepsakes.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/PhotoTags.apk" download>
+            <a className="primary-button" href="/PhotoTags.apk" download onClick={trackDownload}>
               <Download size={21} />
               Download PhotoTags APK
             </a>
@@ -175,12 +246,161 @@ function App() {
             <div><ImageIcon /><span>Portrait and ID layouts</span></div>
             <div><Printer /><span>Direct Android printing</span></div>
           </div>
-          <a className="primary-button" href="/PhotoTags.apk" download>
+          <a className="primary-button" href="/PhotoTags.apk" download onClick={trackDownload}>
             <Download size={21} />
             Download APK
           </a>
         </div>
       </section>
+    </main>
+  );
+}
+
+function AdminPage() {
+  const [credentials, setCredentials] = useState({ username: '', password: '' });
+  const [isAuthed, setIsAuthed] = useState(() => sessionStorage.getItem('phototags.admin') === 'true');
+  const [loginError, setLoginError] = useState('');
+  const [analytics, setAnalytics] = useState(getAnalytics);
+
+  useEffect(() => {
+    const refreshAnalytics = () => setAnalytics(getAnalytics());
+    window.addEventListener('storage', refreshAnalytics);
+    window.addEventListener('phototags-analytics-updated', refreshAnalytics);
+    return () => {
+      window.removeEventListener('storage', refreshAnalytics);
+      window.removeEventListener('phototags-analytics-updated', refreshAnalytics);
+    };
+  }, []);
+
+  const cards = useMemo(
+    () => [
+      { label: 'Site visits', value: analytics.visits },
+      { label: 'APK downloads', value: analytics.downloads },
+      {
+        label: 'Download rate',
+        value: analytics.visits ? `${Math.round((analytics.downloads / analytics.visits) * 100)}%` : '0%'
+      }
+    ],
+    [analytics]
+  );
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+
+    if (credentials.username === ADMIN_USERNAME && credentials.password === ADMIN_PASSWORD) {
+      sessionStorage.setItem('phototags.admin', 'true');
+      setIsAuthed(true);
+      setLoginError('');
+      return;
+    }
+
+    setLoginError('Invalid username or password.');
+  };
+
+  const resetAnalytics = () => {
+    saveAnalytics({
+      visits: 0,
+      downloads: 0,
+      firstVisitAt: null,
+      lastVisitAt: null,
+      lastDownloadAt: null
+    });
+  };
+
+  if (!isAuthed) {
+    return (
+      <main className="admin-shell login-shell">
+        <section className="login-panel" aria-labelledby="admin-login-title">
+          <a className="brand admin-brand" href="/" aria-label="PhotoTags home">
+            <img src="/assets/logo-dark.png" alt="" />
+            <span>PhotoTags</span>
+          </a>
+          <p className="eyebrow">Admin access</p>
+          <h1 id="admin-login-title">Download and visit tracker.</h1>
+          <form className="login-form" onSubmit={handleSubmit}>
+            <label>
+              Username
+              <input
+                autoComplete="username"
+                value={credentials.username}
+                onChange={(event) => setCredentials({ ...credentials, username: event.target.value })}
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={credentials.password}
+                onChange={(event) => setCredentials({ ...credentials, password: event.target.value })}
+              />
+            </label>
+            {loginError ? <p className="login-error">{loginError}</p> : null}
+            <button className="primary-button" type="submit">Log in</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="admin-shell">
+      <header className="admin-header">
+        <a className="brand" href="/" aria-label="PhotoTags home">
+          <img src="/assets/logo-dark.png" alt="" />
+          <span>PhotoTags</span>
+        </a>
+        <button
+          className="outline-button"
+          type="button"
+          onClick={() => {
+            sessionStorage.removeItem('phototags.admin');
+            setIsAuthed(false);
+          }}
+        >
+          Log out
+        </button>
+      </header>
+
+      <section className="admin-hero">
+        <div>
+          <p className="eyebrow">Admin dashboard</p>
+          <h1>Visits and APK downloads.</h1>
+          <p>
+            Counts are saved in this browser because the website has no backend database yet.
+          </p>
+        </div>
+        <BarChart3 aria-hidden="true" />
+      </section>
+
+      <section className="stats-grid">
+        {cards.map((card) => (
+          <article className="stat-card" key={card.label}>
+            <span>{card.label}</span>
+            <strong>{card.value}</strong>
+          </article>
+        ))}
+      </section>
+
+      <section className="admin-details">
+        <div>
+          <span>First visit</span>
+          <strong>{formatDate(analytics.firstVisitAt)}</strong>
+        </div>
+        <div>
+          <span>Latest visit</span>
+          <strong>{formatDate(analytics.lastVisitAt)}</strong>
+        </div>
+        <div>
+          <span>Latest APK download</span>
+          <strong>{formatDate(analytics.lastDownloadAt)}</strong>
+        </div>
+      </section>
+
+      <div className="admin-actions">
+        <a className="ghost-link" href="/">View website <ChevronRight size={20} /></a>
+        <button className="outline-button" type="button" onClick={resetAnalytics}>Reset local stats</button>
+      </div>
     </main>
   );
 }
