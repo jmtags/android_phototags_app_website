@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+
+*.log
+desktop.png
+mobile.png
+phototags-*.png
+
+.DS_Store
+Thumbs.db
