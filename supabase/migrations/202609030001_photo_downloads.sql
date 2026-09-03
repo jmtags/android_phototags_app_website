@@ -37,28 +37,7 @@ create index if not exists photo_downloads_expires_at_idx on public.photo_downlo
 alter table public.photo_downloads enable row level security;
 
 drop policy if exists "Android can create temporary download rows" on public.photo_downloads;
-create policy "Android can create temporary download rows"
-on public.photo_downloads
-for insert
-to anon
-with check (
-  code ~ '^[A-Za-z0-9_-]{4,64}$'
-  and file_path ~ '^captures/[A-Za-z0-9/_ .-]+$'
-  and expires_at > now()
-  and expires_at <= now() + interval '35 minutes'
-  and download_count = 0
-  and downloaded_at is null
-);
-
 drop policy if exists "Android can upload temporary photobooth images" on storage.objects;
-create policy "Android can upload temporary photobooth images"
-on storage.objects
-for insert
-to anon
-with check (
-  bucket_id = 'photobooth-downloads'
-  and name ~ '^captures/[A-Za-z0-9/_ .-]+$'
-);
 
 create or replace function public.increment_photo_download_metrics(download_code text)
 returns void
