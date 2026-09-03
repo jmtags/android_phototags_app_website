@@ -16,13 +16,13 @@ The migration creates:
 Set these in the Vercel project settings:
 
 ```text
-VITE_SUPABASE_URL=https://zizzmsaybcqbqgtzzpst.supabase.co
-VITE_SUPABASE_ANON_KEY=sb_publishable_WE4iqiTRl4mAix7G__LGLQ_W42XqyEA
+SUPABASE_URL=https://zizzmsaybcqbqgtzzpst.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 PUBLIC_SITE_URL=https://phototags.vercel.app
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must only exist in trusted server environments like Vercel. Do not put it in Android or browser code.
+No `VITE_SUPABASE_*` variables are needed for deployment because the browser calls the website API instead of Supabase directly.
 
 ## Android Contract
 
