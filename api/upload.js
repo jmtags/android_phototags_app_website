@@ -121,7 +121,7 @@ module.exports = async function handler(request, response) {
       });
 
     if (!insertError) {
-      const origin = process.env.PUBLIC_SITE_URL || 'https://phototags.vercel.app';
+      const origin = process.env.SITE_URL || 'https://phototags.vercel.app';
 
       sendJson(response, 201, {
         ok: true,
