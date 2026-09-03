@@ -1,7 +1,11 @@
 {
   "rewrites": [
     {
-      "source": "/((?!.*\\.).*)",
+      "source": "/api/download/:code",
+      "destination": "/api/download?code=:code"
+    },
+    {
+      "source": "/((?!api(?:/|$)|.*\\.).*)",
       "destination": "/index.html"
     }
   ]

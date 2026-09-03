@@ -276,7 +276,7 @@ function DownloadPhotoPage({ code }) {
     setDownloadState({ status: 'loading', data: null, message: '' });
 
     try {
-      const response = await fetch(`/api/download/${encodeURIComponent(code)}`, {
+      const response = await fetch(`/api/download?code=${encodeURIComponent(code)}`, {
         headers: { Accept: 'application/json' }
       });
       const payload = await response.json().catch(() => ({}));

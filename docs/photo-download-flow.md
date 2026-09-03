@@ -78,7 +78,7 @@ The API creates the database row server-side with a 30-minute expiry. Android do
 The customer page calls:
 
 ```text
-GET /api/download/{code}
+GET /api/download?code={code}
 ```
 
 The API validates the code, rejects expired rows, creates short-lived signed Storage URLs, and returns the preview/download links. Signed URLs last no longer than 10 minutes and never past the row expiry.
