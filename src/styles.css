@@ -585,6 +585,108 @@ input:focus {
   margin-top: 28px;
 }
 
+.download-shell {
+  width: min(100%, 1120px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 30px clamp(18px, 4vw, 56px) 64px;
+}
+
+.download-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: clamp(32px, 6vw, 72px);
+}
+
+.download-panel {
+  display: grid;
+  gap: 28px;
+  justify-items: center;
+  text-align: center;
+}
+
+.download-copy {
+  max-width: 760px;
+}
+
+.download-copy .eyebrow,
+.download-status .eyebrow {
+  justify-content: center;
+}
+
+.download-copy h1,
+.download-status h1 {
+  margin: 0;
+  font-size: clamp(2.35rem, 7vw, 5rem);
+  line-height: 1.06;
+  letter-spacing: 0;
+}
+
+.download-copy p:not(.eyebrow),
+.download-status p:not(.eyebrow) {
+  max-width: 620px;
+  margin: 22px auto 0;
+  color: rgba(244, 248, 255, 0.74);
+  font-size: 1.08rem;
+  line-height: 1.5;
+}
+
+.photo-preview {
+  width: min(100%, 780px);
+  padding: clamp(10px, 2vw, 18px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 27, 43, 0.9), rgba(8, 15, 27, 0.82));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.32);
+}
+
+.photo-preview img {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.download-photo-button {
+  min-width: min(100%, 280px);
+}
+
+.download-status {
+  display: grid;
+  justify-items: center;
+  width: min(100%, 720px);
+  padding: clamp(28px, 5vw, 54px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 27, 43, 0.92), rgba(8, 15, 27, 0.84));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 30px 80px rgba(0, 0, 0, 0.28);
+}
+
+.download-status > svg {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 24px;
+  color: #ff4c8d;
+}
+
+.download-status .outline-button {
+  margin-top: 30px;
+}
+
+.spin-icon {
+  color: #00c777;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1180px) {
   .site-header {
     grid-template-columns: 1fr auto;

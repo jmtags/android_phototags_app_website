@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
+  AlertCircle,
   BadgeCheck,
   BarChart3,
   Camera,
@@ -8,7 +9,9 @@ import {
   Download,
   Grid2X2,
   Image as ImageIcon,
+  Loader2,
   Printer,
+  RefreshCw,
   Smartphone,
   UserSquare2,
   Wifi
@@ -116,15 +119,21 @@ function formatDate(value) {
 
 function App() {
   const isAdminPage = window.location.pathname === '/admin' || window.location.hash === '#admin';
+  const downloadMatch = window.location.pathname.match(/^\/download\/([A-Za-z0-9_-]{4,64})\/?$/);
+  const isDownloadPage = Boolean(downloadMatch);
 
   useEffect(() => {
-    if (!isAdminPage) {
+    if (!isAdminPage && !isDownloadPage) {
       trackVisit();
     }
-  }, [isAdminPage]);
+  }, [isAdminPage, isDownloadPage]);
 
   if (isAdminPage) {
     return <AdminPage />;
+  }
+
+  if (isDownloadPage) {
+    return <DownloadPhotoPage code={downloadMatch[1]} />;
   }
 
   return (
@@ -251,6 +260,106 @@ function App() {
             Download APK
           </a>
         </div>
+      </section>
+    </main>
+  );
+}
+
+function DownloadPhotoPage({ code }) {
+  const [downloadState, setDownloadState] = useState({
+    status: 'loading',
+    data: null,
+    message: ''
+  });
+
+  const loadPhoto = async () => {
+    setDownloadState({ status: 'loading', data: null, message: '' });
+
+    try {
+      const response = await fetch(`/api/download/${encodeURIComponent(code)}`, {
+        headers: { Accept: 'application/json' }
+      });
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok || !payload.ok) {
+        const isExpired = response.status === 410 || payload.status === 'expired';
+        setDownloadState({
+          status: isExpired ? 'expired' : 'unavailable',
+          data: payload,
+          message: isExpired
+            ? 'This photo link has expired.'
+            : 'This photo is unavailable or the code is invalid.'
+        });
+        return;
+      }
+
+      setDownloadState({ status: 'ready', data: payload, message: '' });
+    } catch {
+      setDownloadState({
+        status: 'unavailable',
+        data: null,
+        message: 'We could not load the photo right now. Please try again.'
+      });
+    }
+  };
+
+  useEffect(() => {
+    loadPhoto();
+  }, [code]);
+
+  const expiresAt = downloadState.data?.expiresAt
+    ? formatDate(downloadState.data.expiresAt)
+    : null;
+
+  return (
+    <main className="download-shell">
+      <header className="download-header">
+        <a className="brand" href="/" aria-label="PhotoTags home">
+          <img src="/assets/logo-dark.png" alt="" />
+          <span>PhotoTags</span>
+        </a>
+      </header>
+
+      <section className="download-panel" aria-live="polite">
+        {downloadState.status === 'loading' ? (
+          <div className="download-status">
+            <Loader2 className="spin-icon" aria-hidden="true" />
+            <p className="eyebrow">Preparing photo</p>
+            <h1>Getting your PhotoTags keepsake.</h1>
+          </div>
+        ) : null}
+
+        {downloadState.status === 'ready' ? (
+          <>
+            <div className="download-copy">
+              <p className="eyebrow">Ready to save</p>
+              <h1>Your photo is ready.</h1>
+              {expiresAt ? <p>This private link expires at {expiresAt}.</p> : null}
+            </div>
+            <div className="photo-preview">
+              <img src={downloadState.data.signedUrl} alt="Finished PhotoTags photobooth photo" />
+            </div>
+            <a className="primary-button download-photo-button" href={downloadState.data.downloadUrl || downloadState.data.signedUrl}>
+              <Download size={21} />
+              Download Photo
+            </a>
+          </>
+        ) : null}
+
+        {downloadState.status === 'expired' || downloadState.status === 'unavailable' ? (
+          <div className="download-status">
+            <AlertCircle aria-hidden="true" />
+            <p className="eyebrow">Photo unavailable</p>
+            <h1>{downloadState.message}</h1>
+            <p>
+              PhotoTags links are temporary for privacy and are available for 30 minutes after the session.
+            </p>
+            <button className="outline-button" type="button" onClick={loadPhoto}>
+              <RefreshCw size={18} />
+              Try Again
+            </button>
+          </div>
+        ) : null}
       </section>
     </main>
   );
