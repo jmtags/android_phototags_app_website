@@ -585,6 +585,19 @@ input:focus {
   margin-top: 28px;
 }
 
+.analytics-status {
+  color: rgba(244, 248, 255, 0.68);
+  font-weight: 730;
+}
+
+.analytics-status-ready {
+  color: #00d887;
+}
+
+.analytics-status-error {
+  color: #ff4c8d;
+}
+
 .download-shell {
   width: min(100%, 1120px);
   min-height: 100vh;

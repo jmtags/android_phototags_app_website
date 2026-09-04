@@ -86,3 +86,24 @@ The API validates the code, rejects expired rows, creates short-lived signed Sto
 ## Cleanup
 
 Later cleanup code can call `delete_expired_photo_download_rows()` from trusted server code, then delete the returned file paths from the `photobooth-downloads` bucket.
+
+## Website Analytics
+
+Run `supabase/migrations/202609040001_site_analytics.sql` manually in the Supabase SQL editor to enable real analytics.
+
+The website records:
+
+- `site_visit` when the public home page loads
+- `apk_download` when someone downloads through `/api/download-apk`
+
+The admin page reads totals from:
+
+```text
+GET /api/analytics
+```
+
+APK buttons now link to:
+
+```text
+https://phototags.vercel.app/api/download-apk
+```

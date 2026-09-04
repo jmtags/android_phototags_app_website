@@ -20,7 +20,13 @@ import './styles.css';
 
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'phototags2026';
-const ANALYTICS_KEY = 'phototags.analytics.v1';
+const ANALYTICS_FALLBACK = {
+  visits: 0,
+  downloads: 0,
+  firstVisitAt: null,
+  lastVisitAt: null,
+  lastDownloadAt: null
+};
 
 const features = [
   {
@@ -63,47 +69,17 @@ const steps = [
   }
 ];
 
-function getAnalytics() {
-  const fallback = {
-    visits: 0,
-    downloads: 0,
-    firstVisitAt: null,
-    lastVisitAt: null,
-    lastDownloadAt: null
-  };
-
+async function trackAnalyticsEvent(eventType, pagePath = window.location.pathname) {
   try {
-    const stored = JSON.parse(localStorage.getItem(ANALYTICS_KEY));
-    return { ...fallback, ...stored };
+    await fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventType, pagePath }),
+      keepalive: true
+    });
   } catch {
-    return fallback;
+    // Analytics should never interrupt the customer flow.
   }
-}
-
-function saveAnalytics(nextAnalytics) {
-  localStorage.setItem(ANALYTICS_KEY, JSON.stringify(nextAnalytics));
-  window.dispatchEvent(new Event('phototags-analytics-updated'));
-}
-
-function trackVisit() {
-  const now = new Date().toISOString();
-  const analytics = getAnalytics();
-  saveAnalytics({
-    ...analytics,
-    visits: analytics.visits + 1,
-    firstVisitAt: analytics.firstVisitAt ?? now,
-    lastVisitAt: now
-  });
-}
-
-function trackDownload() {
-  const now = new Date().toISOString();
-  const analytics = getAnalytics();
-  saveAnalytics({
-    ...analytics,
-    downloads: analytics.downloads + 1,
-    lastDownloadAt: now
-  });
 }
 
 function formatDate(value) {
@@ -124,7 +100,7 @@ function App() {
 
   useEffect(() => {
     if (!isAdminPage && !isDownloadPage) {
-      trackVisit();
+      trackAnalyticsEvent('site_visit');
     }
   }, [isAdminPage, isDownloadPage]);
 
@@ -149,7 +125,7 @@ function App() {
           <a href="#printer-support">Printer Support</a>
           <a href="#id-photo">ID Photo Mode</a>
         </nav>
-        <a className="outline-button" href="/PhotoTags.apk" download onClick={trackDownload}>
+        <a className="outline-button" href="/api/download-apk">
           <Download size={18} />
           Download APK
         </a>
@@ -164,7 +140,7 @@ function App() {
             Built for events, school IDs, and quick photo keepsakes.
           </p>
           <div className="hero-actions">
-            <a className="primary-button" href="/PhotoTags.apk" download onClick={trackDownload}>
+            <a className="primary-button" href="/api/download-apk">
               <Download size={21} />
               Download PhotoTags APK
             </a>
@@ -255,7 +231,7 @@ function App() {
             <div><ImageIcon /><span>Portrait and ID layouts</span></div>
             <div><Printer /><span>Direct Android printing</span></div>
           </div>
-          <a className="primary-button" href="/PhotoTags.apk" download onClick={trackDownload}>
+          <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
             Download APK
           </a>
@@ -369,17 +345,54 @@ function AdminPage() {
   const [credentials, setCredentials] = useState({ username: '', password: '' });
   const [isAuthed, setIsAuthed] = useState(() => sessionStorage.getItem('phototags.admin') === 'true');
   const [loginError, setLoginError] = useState('');
-  const [analytics, setAnalytics] = useState(getAnalytics);
+  const [analytics, setAnalytics] = useState(ANALYTICS_FALLBACK);
+  const [analyticsStatus, setAnalyticsStatus] = useState('idle');
 
   useEffect(() => {
-    const refreshAnalytics = () => setAnalytics(getAnalytics());
-    window.addEventListener('storage', refreshAnalytics);
-    window.addEventListener('phototags-analytics-updated', refreshAnalytics);
-    return () => {
-      window.removeEventListener('storage', refreshAnalytics);
-      window.removeEventListener('phototags-analytics-updated', refreshAnalytics);
+    if (!isAuthed) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const refreshAnalytics = async () => {
+      setAnalyticsStatus('loading');
+
+      try {
+        const response = await fetch('/api/analytics', {
+          headers: { Accept: 'application/json' }
+        });
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error('Analytics request failed');
+        }
+
+        if (isMounted) {
+          setAnalytics({
+            visits: payload.visits,
+            downloads: payload.downloads,
+            firstVisitAt: payload.firstVisitAt,
+            lastVisitAt: payload.lastVisitAt,
+            lastDownloadAt: payload.lastDownloadAt
+          });
+          setAnalyticsStatus('ready');
+        }
+      } catch {
+        if (isMounted) {
+          setAnalyticsStatus('error');
+        }
+      }
     };
-  }, []);
+
+    refreshAnalytics();
+    const intervalId = window.setInterval(refreshAnalytics, 30000);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, [isAuthed]);
 
   const cards = useMemo(
     () => [
@@ -404,16 +417,6 @@ function AdminPage() {
     }
 
     setLoginError('Invalid username or password.');
-  };
-
-  const resetAnalytics = () => {
-    saveAnalytics({
-      visits: 0,
-      downloads: 0,
-      firstVisitAt: null,
-      lastVisitAt: null,
-      lastDownloadAt: null
-    });
   };
 
   if (!isAuthed) {
@@ -476,7 +479,7 @@ function AdminPage() {
           <p className="eyebrow">Admin dashboard</p>
           <h1>Visits and APK downloads.</h1>
           <p>
-            Counts are saved in this browser because the website has no backend database yet.
+            Counts are stored in Supabase and refresh automatically while this page is open.
           </p>
         </div>
         <BarChart3 aria-hidden="true" />
@@ -508,7 +511,11 @@ function AdminPage() {
 
       <div className="admin-actions">
         <a className="ghost-link" href="/">View website <ChevronRight size={20} /></a>
-        <button className="outline-button" type="button" onClick={resetAnalytics}>Reset local stats</button>
+        <span className={`analytics-status analytics-status-${analyticsStatus}`}>
+          {analyticsStatus === 'loading' ? 'Refreshing analytics' : null}
+          {analyticsStatus === 'ready' ? 'Analytics up to date' : null}
+          {analyticsStatus === 'error' ? 'Analytics unavailable' : null}
+        </span>
       </div>
     </main>
   );
