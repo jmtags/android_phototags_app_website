@@ -19,6 +19,7 @@ Set these in the Vercel project settings:
 SUPABASE_URL=https://zizzmsaybcqbqgtzzpst.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
 SITE_URL=https://phototags.vercel.app
+ADMIN_PASSWORD=phototags2026
 ```
 
 `SUPABASE_SERVICE_ROLE_KEY` must only exist in trusted server environments like Vercel. Do not put it in Android or browser code.
@@ -107,3 +108,18 @@ APK buttons now link to:
 ```text
 https://phototags.vercel.app/api/download-apk
 ```
+
+## Website Comments
+
+Run `supabase/migrations/202609060001_site_comments.sql` manually in the Supabase SQL editor to enable customer reviews.
+
+The public website:
+
+- Loads only `approved` comments from `GET /api/comments?status=approved`
+- Creates new comments as `pending` through `POST /api/comments`
+
+The admin page:
+
+- Loads pending, approved, and rejected comments with `GET /api/comments?admin=1&status={status}`
+- Approves or rejects comments with `PATCH /api/comments`
+- Uses the `ADMIN_PASSWORD` Vercel environment variable for moderation API calls

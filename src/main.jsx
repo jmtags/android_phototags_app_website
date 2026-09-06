@@ -12,7 +12,10 @@ import {
   Loader2,
   Printer,
   RefreshCw,
+  Send,
   Smartphone,
+  Star,
+  ThumbsUp,
   UserSquare2,
   Wifi
 } from 'lucide-react';
@@ -26,6 +29,11 @@ const ANALYTICS_FALLBACK = {
   firstVisitAt: null,
   lastVisitAt: null,
   lastDownloadAt: null
+};
+const REVIEW_FORM_INITIAL = {
+  displayName: '',
+  rating: 5,
+  commentText: ''
 };
 
 const features = [
@@ -90,6 +98,18 @@ function formatDate(value) {
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: 'medium',
     timeStyle: 'short'
+  }).format(new Date(value));
+}
+
+function formatReviewDate(value) {
+  if (!value) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
   }).format(new Date(value));
 }
 
@@ -237,7 +257,168 @@ function App() {
           </a>
         </div>
       </section>
+
+      <ReviewSection />
     </main>
+  );
+}
+
+function RatingStars({ rating, onChange, size = 18 }) {
+  return (
+    <div className="rating-stars" aria-label={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map((value) => {
+        const isFilled = value <= rating;
+
+        if (!onChange) {
+          return (
+            <Star
+              key={value}
+              size={size}
+              aria-hidden="true"
+              className={isFilled ? 'star-filled' : ''}
+              fill={isFilled ? 'currentColor' : 'none'}
+            />
+          );
+        }
+
+        return (
+          <button
+            key={value}
+            type="button"
+            aria-label={`${value} star${value === 1 ? '' : 's'}`}
+            className={isFilled ? 'star-button star-filled' : 'star-button'}
+            onClick={() => onChange(value)}
+          >
+            <Star size={size} aria-hidden="true" fill={isFilled ? 'currentColor' : 'none'} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReviewCard({ comment }) {
+  return (
+    <article className="review-card">
+      <div className="review-avatar" aria-hidden="true">
+        {comment.displayName.charAt(0).toUpperCase()}
+      </div>
+      <div className="review-body">
+        <div className="review-meta">
+          <strong>{comment.displayName}</strong>
+          <span>{formatReviewDate(comment.createdAt)}</span>
+        </div>
+        <RatingStars rating={comment.rating} />
+        <p>{comment.commentText}</p>
+      </div>
+    </article>
+  );
+}
+
+function ReviewSection() {
+  const [comments, setComments] = useState([]);
+  const [form, setForm] = useState(REVIEW_FORM_INITIAL);
+  const [status, setStatus] = useState('idle');
+  const [message, setMessage] = useState('');
+
+  const loadApprovedComments = async () => {
+    try {
+      const response = await fetch('/api/comments?status=approved', {
+        headers: { Accept: 'application/json' }
+      });
+      const payload = await response.json();
+
+      if (response.ok && payload.ok) {
+        setComments(payload.comments);
+      }
+    } catch {
+      setComments([]);
+    }
+  };
+
+  useEffect(() => {
+    loadApprovedComments();
+  }, []);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setStatus('submitting');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form)
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error('Review submit failed');
+      }
+
+      setForm(REVIEW_FORM_INITIAL);
+      setStatus('success');
+      setMessage(payload.message);
+    } catch {
+      setStatus('error');
+      setMessage('We could not submit your review right now.');
+    }
+  };
+
+  return (
+    <section className="reviews-section" id="reviews">
+      <div className="section-heading">
+        <p className="eyebrow">Customer reviews</p>
+        <h2>What PhotoTags users are saying.</h2>
+      </div>
+
+      <div className="reviews-layout">
+        <div className="reviews-list">
+          {comments.length ? comments.map((comment) => (
+            <ReviewCard comment={comment} key={comment.id} />
+          )) : (
+            <div className="empty-reviews">
+              <ThumbsUp aria-hidden="true" />
+              <p>Approved reviews will appear here soon.</p>
+            </div>
+          )}
+        </div>
+
+        <form className="review-form" onSubmit={handleSubmit}>
+          <h3>Write a review</h3>
+          <label>
+            Name
+            <input
+              required
+              maxLength={80}
+              value={form.displayName}
+              onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+            />
+          </label>
+          <label>
+            Rating
+            <RatingStars rating={form.rating} onChange={(rating) => setForm({ ...form, rating })} size={24} />
+          </label>
+          <label>
+            Comment
+            <textarea
+              required
+              minLength={3}
+              maxLength={1000}
+              rows={5}
+              value={form.commentText}
+              onChange={(event) => setForm({ ...form, commentText: event.target.value })}
+            />
+          </label>
+          {message ? <p className={`review-message review-message-${status}`}>{message}</p> : null}
+          <button className="primary-button" type="submit" disabled={status === 'submitting'}>
+            <Send size={18} />
+            {status === 'submitting' ? 'Submitting' : 'Submit Review'}
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -347,6 +528,13 @@ function AdminPage() {
   const [loginError, setLoginError] = useState('');
   const [analytics, setAnalytics] = useState(ANALYTICS_FALLBACK);
   const [analyticsStatus, setAnalyticsStatus] = useState('idle');
+  const [adminPassword, setAdminPassword] = useState(() => sessionStorage.getItem('phototags.admin.password') || '');
+  const [commentStatus, setCommentStatus] = useState('idle');
+  const [commentTabs, setCommentTabs] = useState({
+    pending: [],
+    approved: [],
+    rejected: []
+  });
 
   useEffect(() => {
     if (!isAuthed) {
@@ -394,6 +582,66 @@ function AdminPage() {
     };
   }, [isAuthed]);
 
+  const refreshAdminComments = async () => {
+    if (!isAuthed || !adminPassword) {
+      return;
+    }
+
+    setCommentStatus('loading');
+
+    try {
+      const statuses = ['pending', 'approved', 'rejected'];
+      const results = await Promise.all(statuses.map(async (status) => {
+        const response = await fetch(`/api/comments?admin=1&status=${status}`, {
+          headers: {
+            Accept: 'application/json',
+            'X-Admin-Password': adminPassword
+          }
+        });
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error('Comment request failed');
+        }
+
+        return [status, payload.comments];
+      }));
+
+      setCommentTabs(Object.fromEntries(results));
+      setCommentStatus('ready');
+    } catch {
+      setCommentStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    refreshAdminComments();
+  }, [isAuthed, adminPassword]);
+
+  const updateCommentStatus = async (id, status) => {
+    setCommentStatus('loading');
+
+    try {
+      const response = await fetch('/api/comments', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ id, status })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error('Comment update failed');
+      }
+
+      await refreshAdminComments();
+    } catch {
+      setCommentStatus('error');
+    }
+  };
+
   const cards = useMemo(
     () => [
       { label: 'Site visits', value: analytics.visits },
@@ -411,6 +659,8 @@ function AdminPage() {
 
     if (credentials.username === ADMIN_USERNAME && credentials.password === ADMIN_PASSWORD) {
       sessionStorage.setItem('phototags.admin', 'true');
+      sessionStorage.setItem('phototags.admin.password', credentials.password);
+      setAdminPassword(credentials.password);
       setIsAuthed(true);
       setLoginError('');
       return;
@@ -467,6 +717,8 @@ function AdminPage() {
           type="button"
           onClick={() => {
             sessionStorage.removeItem('phototags.admin');
+            sessionStorage.removeItem('phototags.admin.password');
+            setAdminPassword('');
             setIsAuthed(false);
           }}
         >
@@ -517,7 +769,69 @@ function AdminPage() {
           {analyticsStatus === 'error' ? 'Analytics unavailable' : null}
         </span>
       </div>
+
+      <AdminCommentsSection
+        comments={commentTabs}
+        status={commentStatus}
+        onRefresh={refreshAdminComments}
+        onUpdateStatus={updateCommentStatus}
+      />
     </main>
+  );
+}
+
+function AdminCommentsSection({ comments, status, onRefresh, onUpdateStatus }) {
+  return (
+    <section className="admin-comments">
+      <div className="admin-comments-heading">
+        <div>
+          <p className="eyebrow">Review moderation</p>
+          <h2>Approve customer comments.</h2>
+        </div>
+        <button className="outline-button" type="button" onClick={onRefresh}>
+          <RefreshCw size={18} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="comment-queues">
+        {['pending', 'approved', 'rejected'].map((queue) => (
+          <div className="comment-queue" key={queue}>
+            <h3>{queue.charAt(0).toUpperCase() + queue.slice(1)} ({comments[queue].length})</h3>
+            {comments[queue].length ? comments[queue].map((comment) => (
+              <article className="moderation-card" key={comment.id}>
+                <div className="review-meta">
+                  <strong>{comment.displayName}</strong>
+                  <span>{formatReviewDate(comment.createdAt)}</span>
+                </div>
+                <RatingStars rating={comment.rating} />
+                <p>{comment.commentText}</p>
+                <div className="moderation-actions">
+                  {queue !== 'approved' ? (
+                    <button className="primary-button" type="button" onClick={() => onUpdateStatus(comment.id, 'approved')}>
+                      Approve
+                    </button>
+                  ) : null}
+                  {queue !== 'rejected' ? (
+                    <button className="outline-button" type="button" onClick={() => onUpdateStatus(comment.id, 'rejected')}>
+                      Reject
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            )) : (
+              <p className="queue-empty">No {queue} comments.</p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className={`analytics-status analytics-status-${status}`}>
+        {status === 'loading' ? 'Refreshing comments' : null}
+        {status === 'ready' ? 'Comments up to date' : null}
+        {status === 'error' ? 'Comments unavailable' : null}
+      </p>
+    </section>
   );
 }
 
