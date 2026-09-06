@@ -28,7 +28,9 @@ const ANALYTICS_FALLBACK = {
   downloads: 0,
   firstVisitAt: null,
   lastVisitAt: null,
-  lastDownloadAt: null
+  lastDownloadAt: null,
+  topVisitLocations: [],
+  topDownloadLocations: []
 };
 const REVIEW_FORM_INITIAL = {
   displayName: '',
@@ -562,7 +564,9 @@ function AdminPage() {
             downloads: payload.downloads,
             firstVisitAt: payload.firstVisitAt,
             lastVisitAt: payload.lastVisitAt,
-            lastDownloadAt: payload.lastDownloadAt
+            lastDownloadAt: payload.lastDownloadAt,
+            topVisitLocations: payload.topVisitLocations || [],
+            topDownloadLocations: payload.topDownloadLocations || []
           });
           setAnalyticsStatus('ready');
         }
@@ -581,6 +585,13 @@ function AdminPage() {
       window.clearInterval(intervalId);
     };
   }, [isAuthed]);
+
+  useEffect(() => {
+    if (isAuthed && !adminPassword) {
+      sessionStorage.removeItem('phototags.admin');
+      setIsAuthed(false);
+    }
+  }, [isAuthed, adminPassword]);
 
   const refreshAdminComments = async () => {
     if (!isAuthed || !adminPassword) {
@@ -761,6 +772,11 @@ function AdminPage() {
         </div>
       </section>
 
+      <section className="location-grid">
+        <LocationList title="Visitor locations" locations={analytics.topVisitLocations} />
+        <LocationList title="APK download locations" locations={analytics.topDownloadLocations} />
+      </section>
+
       <div className="admin-actions">
         <a className="ghost-link" href="/">View website <ChevronRight size={20} /></a>
         <span className={`analytics-status analytics-status-${analyticsStatus}`}>
@@ -777,6 +793,26 @@ function AdminPage() {
         onUpdateStatus={updateCommentStatus}
       />
     </main>
+  );
+}
+
+function LocationList({ title, locations }) {
+  return (
+    <article className="location-card">
+      <h2>{title}</h2>
+      {locations.length ? (
+        <div className="location-list">
+          {locations.map((location) => (
+            <div className="location-row" key={`${title}-${location.label}-${location.timezone || ''}`}>
+              <span>{location.label}</span>
+              <strong>{location.count}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p>No location data yet.</p>
+      )}
+    </article>
   );
 }
 

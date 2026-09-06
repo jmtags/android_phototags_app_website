@@ -50,12 +50,24 @@ function getRequestMetadata(request, body = {}) {
   const pagePath = typeof body.pagePath === 'string' ? body.pagePath.slice(0, 300) : null;
   const referrer = request.headers.referer || request.headers.referrer || null;
   const userAgent = request.headers['user-agent'] || null;
+  const city = request.headers['x-vercel-ip-city'];
 
   return {
     page_path: pagePath || `${proto}://${host}${request.url || ''}`.slice(0, 300),
     referrer: typeof referrer === 'string' ? referrer.slice(0, 500) : null,
-    user_agent: typeof userAgent === 'string' ? userAgent.slice(0, 500) : null
+    user_agent: typeof userAgent === 'string' ? userAgent.slice(0, 500) : null,
+    country: cleanHeader(request.headers['x-vercel-ip-country'], 8),
+    region: cleanHeader(request.headers['x-vercel-ip-country-region'], 80),
+    city: typeof city === 'string' ? decodeURIComponent(city).slice(0, 120) : null,
+    latitude: cleanHeader(request.headers['x-vercel-ip-latitude'], 32),
+    longitude: cleanHeader(request.headers['x-vercel-ip-longitude'], 32),
+    timezone: cleanHeader(request.headers['x-vercel-ip-timezone'], 80),
+    postal_code: cleanHeader(request.headers['x-vercel-ip-postal-code'], 32)
   };
+}
+
+function cleanHeader(value, maxLength) {
+  return typeof value === 'string' && value ? value.slice(0, maxLength) : null;
 }
 
 async function getSummary(supabase, response) {
@@ -67,6 +79,18 @@ async function getSummary(supabase, response) {
   }
 
   const summary = Array.isArray(data) ? data[0] : data;
+  const { data: eventRows, error: eventsError } = await supabase
+    .from('site_analytics_events')
+    .select('event_type, country, region, city, timezone')
+    .in('event_type', ['site_visit', 'apk_download'])
+    .not('country', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1000);
+
+  if (eventsError) {
+    sendJson(response, 500, { ok: false, status: 'locations_failed' });
+    return;
+  }
 
   sendJson(response, 200, {
     ok: true,
@@ -75,8 +99,33 @@ async function getSummary(supabase, response) {
     downloads: Number(summary?.downloads || 0),
     firstVisitAt: summary?.first_visit_at || null,
     lastVisitAt: summary?.last_visit_at || null,
-    lastDownloadAt: summary?.last_download_at || null
+    lastDownloadAt: summary?.last_download_at || null,
+    topVisitLocations: getTopLocations(eventRows || [], 'site_visit'),
+    topDownloadLocations: getTopLocations(eventRows || [], 'apk_download')
   });
+}
+
+function getTopLocations(rows, eventType) {
+  const counts = new Map();
+
+  rows
+    .filter((row) => row.event_type === eventType)
+    .forEach((row) => {
+      const label = [row.city, row.region, row.country].filter(Boolean).join(', ') || 'Unknown';
+      const key = `${label}|${row.timezone || ''}`;
+      const current = counts.get(key) || {
+        label,
+        timezone: row.timezone || null,
+        count: 0
+      };
+
+      current.count += 1;
+      counts.set(key, current);
+    });
+
+  return Array.from(counts.values())
+    .sort((first, second) => second.count - first.count)
+    .slice(0, 8);
 }
 
 async function recordEvent(supabase, request, response) {

@@ -16,6 +16,10 @@ function createClientFromEnv() {
   });
 }
 
+function cleanHeader(value, maxLength) {
+  return typeof value === 'string' && value ? value.slice(0, maxLength) : null;
+}
+
 module.exports = async function handler(request, response) {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
@@ -27,13 +31,22 @@ module.exports = async function handler(request, response) {
   const supabase = createClientFromEnv();
 
   if (supabase) {
+    const city = request.headers['x-vercel-ip-city'];
+
     await supabase
       .from('site_analytics_events')
       .insert({
         event_type: 'apk_download',
         page_path: '/PhotoTags.apk',
         referrer: request.headers.referer || request.headers.referrer || null,
-        user_agent: request.headers['user-agent'] || null
+        user_agent: request.headers['user-agent'] || null,
+        country: cleanHeader(request.headers['x-vercel-ip-country'], 8),
+        region: cleanHeader(request.headers['x-vercel-ip-country-region'], 80),
+        city: typeof city === 'string' ? decodeURIComponent(city).slice(0, 120) : null,
+        latitude: cleanHeader(request.headers['x-vercel-ip-latitude'], 32),
+        longitude: cleanHeader(request.headers['x-vercel-ip-longitude'], 32),
+        timezone: cleanHeader(request.headers['x-vercel-ip-timezone'], 80),
+        postal_code: cleanHeader(request.headers['x-vercel-ip-postal-code'], 32)
       });
   }
 

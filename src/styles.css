@@ -753,6 +753,56 @@ button:disabled {
   margin-top: 28px;
 }
 
+.location-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 22px;
+  margin-top: 24px;
+}
+
+.location-card {
+  display: grid;
+  gap: 16px;
+  min-height: 210px;
+  padding: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 27, 43, 0.92), rgba(8, 15, 27, 0.84));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 30px 80px rgba(0, 0, 0, 0.28);
+}
+
+.location-card h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.location-card p {
+  margin: 0;
+  color: rgba(244, 248, 255, 0.68);
+}
+
+.location-list {
+  display: grid;
+  gap: 10px;
+}
+
+.location-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.location-row span {
+  color: rgba(244, 248, 255, 0.76);
+}
+
+.location-row strong {
+  color: #00d887;
+}
+
 .analytics-status {
   color: rgba(244, 248, 255, 0.68);
   font-weight: 730;
@@ -981,6 +1031,7 @@ button:disabled {
   .admin-hero,
   .stats-grid,
   .admin-details,
+  .location-grid,
   .comment-queues,
   .reviews-layout {
     grid-template-columns: 1fr;

@@ -91,6 +91,7 @@ Later cleanup code can call `delete_expired_photo_download_rows()` from trusted 
 ## Website Analytics
 
 Run `supabase/migrations/202609040001_site_analytics.sql` manually in the Supabase SQL editor to enable real analytics.
+Run `supabase/migrations/202609060002_analytics_locations.sql` manually after that to store Vercel request location headers.
 
 The website records:
 
@@ -108,6 +109,8 @@ APK buttons now link to:
 ```text
 https://phototags.vercel.app/api/download-apk
 ```
+
+Location analytics come from Vercel request headers such as `x-vercel-ip-country`, `x-vercel-ip-country-region`, and `x-vercel-ip-city`.
 
 ## Website Comments
 
