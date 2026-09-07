@@ -119,12 +119,14 @@ function App() {
   const isAdminPage = window.location.pathname === '/admin' || window.location.hash === '#admin';
   const downloadMatch = window.location.pathname.match(/^\/download\/([A-Za-z0-9_-]{4,64})\/?$/);
   const isDownloadPage = Boolean(downloadMatch);
+  const isPrivacyPage = window.location.pathname === '/privacy-policy';
+  const isUsePolicyPage = window.location.pathname === '/use-policy';
 
   useEffect(() => {
-    if (!isAdminPage && !isDownloadPage) {
+    if (!isAdminPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage) {
       trackAnalyticsEvent('site_visit');
     }
-  }, [isAdminPage, isDownloadPage]);
+  }, [isAdminPage, isDownloadPage, isPrivacyPage, isUsePolicyPage]);
 
   if (isAdminPage) {
     return <AdminPage />;
@@ -132,6 +134,14 @@ function App() {
 
   if (isDownloadPage) {
     return <DownloadPhotoPage code={downloadMatch[1]} />;
+  }
+
+  if (isPrivacyPage) {
+    return <PolicyPage type="privacy" />;
+  }
+
+  if (isUsePolicyPage) {
+    return <PolicyPage type="use" />;
   }
 
   return (
@@ -146,6 +156,7 @@ function App() {
           <a href="#how-it-works">How It Works</a>
           <a href="#printer-support">Printer Support</a>
           <a href="#id-photo">ID Photo Mode</a>
+          <a href="#reviews">Reviews</a>
         </nav>
         <a className="outline-button" href="/api/download-apk">
           <Download size={18} />
@@ -261,6 +272,109 @@ function App() {
       </section>
 
       <ReviewSection />
+
+      <footer className="site-footer">
+        <span>PhotoTags</span>
+        <div>
+          <a href="/privacy-policy">Privacy Policy</a>
+          <a href="/use-policy">Use Policy</a>
+        </div>
+      </footer>
+    </main>
+  );
+}
+
+const policyContent = {
+  privacy: {
+    eyebrow: 'Privacy Policy',
+    title: 'PhotoTags Privacy Policy',
+    updated: 'Last updated: September 7, 2026',
+    intro: 'PhotoTags is built for quick photobooth sessions, APK downloads, customer reviews, and temporary QR photo downloads.',
+    sections: [
+      {
+        title: 'Information We Collect',
+        body: 'The website may collect basic analytics such as page visits, APK downloads, approximate location from Vercel request headers, browser user agent, referrer, customer review name, rating, and review text. QR photo downloads store temporary photo file paths, short codes, expiry times, and download counts.'
+      },
+      {
+        title: 'Temporary Photo Downloads',
+        body: 'Finished photobooth photos uploaded for QR download are stored in a private Supabase Storage bucket and are intended to expire after 30 minutes. Download pages use short-lived signed URLs and reject expired codes.'
+      },
+      {
+        title: 'How We Use Information',
+        body: 'We use this information to provide downloads, show approved customer reviews, understand general usage, troubleshoot the service, and improve PhotoTags.'
+      },
+      {
+        title: 'What We Share',
+        body: 'We do not sell customer information. Website hosting, database, storage, and analytics operations may be processed through service providers such as Vercel and Supabase.'
+      },
+      {
+        title: 'Reviews',
+        body: 'Submitted reviews are not shown publicly until approved in the admin page. Approved reviews may display the submitted name, rating, comment, and date.'
+      },
+      {
+        title: 'Contact',
+        body: 'For privacy questions or removal requests, contact the PhotoTags administrator or event operator that provided the app or website link.'
+      }
+    ]
+  },
+  use: {
+    eyebrow: 'Use Policy',
+    title: 'PhotoTags Use Policy',
+    updated: 'Last updated: September 7, 2026',
+    intro: 'This policy explains acceptable use of the PhotoTags website, APK download, QR photo download flow, and review/comment features.',
+    sections: [
+      {
+        title: 'Acceptable Use',
+        body: 'Use PhotoTags only for lawful photobooth, event, ID photo, and personal download purposes. Do not upload, share, or request content that is illegal, abusive, exploitative, hateful, or violates another person\'s rights.'
+      },
+      {
+        title: 'Photo Uploads',
+        body: 'Only upload photos you are authorized to handle. Event operators are responsible for getting any required consent from guests before capture, upload, printing, or sharing.'
+      },
+      {
+        title: 'QR Links',
+        body: 'QR photo links are temporary and should be shared only with the intended customer. Do not attempt to guess, scrape, automate, or abuse download codes.'
+      },
+      {
+        title: 'Reviews and Comments',
+        body: 'Reviews should be honest, relevant, and respectful. Spam, offensive content, private information, and misleading submissions may be rejected or removed.'
+      },
+      {
+        title: 'Security',
+        body: 'Do not attempt to bypass access controls, interfere with the website, attack Supabase or Vercel services, or reverse engineer private API behavior for abuse.'
+      },
+      {
+        title: 'Changes',
+        body: 'PhotoTags may update this policy as the app and website change. Continued use of the service means you accept the current policy.'
+      }
+    ]
+  }
+};
+
+function PolicyPage({ type }) {
+  const policy = policyContent[type];
+
+  return (
+    <main className="policy-shell">
+      <header className="download-header">
+        <a className="brand" href="/" aria-label="PhotoTags home">
+          <img src="/assets/logo-dark.png" alt="" />
+          <span>PhotoTags</span>
+        </a>
+      </header>
+
+      <article className="policy-content">
+        <p className="eyebrow">{policy.eyebrow}</p>
+        <h1>{policy.title}</h1>
+        <p className="policy-updated">{policy.updated}</p>
+        <p className="policy-intro">{policy.intro}</p>
+        {policy.sections.map((section) => (
+          <section key={section.title}>
+            <h2>{section.title}</h2>
+            <p>{section.body}</p>
+          </section>
+        ))}
+      </article>
     </main>
   );
 }
@@ -742,7 +856,7 @@ function AdminPage() {
           <p className="eyebrow">Admin dashboard</p>
           <h1>Visits and APK downloads.</h1>
           <p>
-            Counts are stored in Supabase and refresh automatically while this page is open.
+            Counts refresh automatically while this page is open.
           </p>
         </div>
         <BarChart3 aria-hidden="true" />
