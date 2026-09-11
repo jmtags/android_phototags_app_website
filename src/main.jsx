@@ -24,7 +24,8 @@ import {
   Star,
   ThumbsUp,
   UserSquare2,
-  Wifi
+  Wifi,
+  X
 } from 'lucide-react';
 import './styles.css';
 
@@ -89,11 +90,11 @@ const appVersions = [
       },
       {
         title: 'Supported Printers',
-        items: ['Canon PIXMA G1010', 'Epson L18050', 'Epson L121 experimental support']
+        items: ['Canon PIXMA G1010', 'Epson L121', 'Epson L18050']
       },
       {
         title: 'Supported Cameras',
-        items: ['Android built-in camera', 'Front camera with rear camera fallback', 'USB webcam support through UVC/OTG', 'UVC-compatible Logitech-style webcams']
+        items: ['Android built-in camera', 'Front camera with rear camera fallback', 'Logitech C270 webcam', 'USB webcam support through UVC/OTG', 'UVC-compatible Logitech-style webcams']
       },
       {
         title: 'Saved Gallery',
@@ -161,7 +162,7 @@ const features = [
 const steps = [
   {
     title: 'Connect printer',
-    body: 'Pair PhotoTags with Canon G1010 and save color, paper, and orientation presets.',
+    body: 'Pair PhotoTags with Canon PIXMA G1010, Epson L121, or Epson L18050 and save color, paper, and orientation presets.',
     image: '/assets/print-setup-transparent.png'
   },
   {
@@ -285,8 +286,10 @@ function App() {
             PhotoTags is currently in early access. Pro licensing is being prepared, but no payment is required today.
           </p>
           <p className="support-line">
-            Works with <strong>Canon G1010</strong>
-            <span>More printers coming soon</span>
+            Works with <strong>Canon PIXMA G1010</strong>
+            <strong>Epson L121</strong>
+            <strong>Epson L18050</strong>
+            <span>Android camera and Logitech C270 supported</span>
           </p>
         </div>
 
@@ -325,11 +328,11 @@ function App() {
         </div>
         <div>
           <Printer />
-          <span>Canon G1010 supported</span>
+          <span>Canon PIXMA G1010, Epson L121, and Epson L18050 supported</span>
         </div>
         <div>
           <Wifi />
-          <span>Epson L121, L3210, and L8050 planned</span>
+          <span>Android camera and Logitech C270 USB webcam supported</span>
         </div>
       </section>
 
@@ -556,8 +559,22 @@ function RatingStars({ rating, onChange, size = 18 }) {
 }
 
 function AppVersionsSection() {
-  const [activeVersion, setActiveVersion] = useState(appVersions[0].versionName);
-  const selectedVersion = appVersions.find((version) => version.versionName === activeVersion) || appVersions[0];
+  const [selectedVersion, setSelectedVersion] = useState(null);
+
+  useEffect(() => {
+    if (!selectedVersion) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setSelectedVersion(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedVersion]);
 
   return (
     <section className="app-versions-section" id="app-versions">
@@ -568,48 +585,62 @@ function AppVersionsSection() {
 
       <div className="app-version-layout">
         <div className="version-list" role="list" aria-label="PhotoTags versions">
-          {appVersions.map((version) => {
-            const isActive = version.versionName === activeVersion;
-
-            return (
-              <button
-                className={isActive ? 'version-button version-button-active' : 'version-button'}
-                key={version.versionName}
-                type="button"
-                onClick={() => setActiveVersion(version.versionName)}
-              >
-                <span>{version.label}</span>
-                <strong>v{version.versionName}</strong>
-                <small>Version code {version.versionCode} - {version.date}</small>
-              </button>
-            );
-          })}
+          {appVersions.map((version) => (
+            <button
+              className="version-button"
+              key={version.versionName}
+              type="button"
+              onClick={() => setSelectedVersion(version)}
+            >
+              <span>{version.label}</span>
+              <strong>v{version.versionName}</strong>
+              <small>Version code {version.versionCode} - {version.date}</small>
+            </button>
+          ))}
         </div>
 
-        <article className="version-details">
-          <div className="version-details-header">
-            <div>
-              <p className="eyebrow">v{selectedVersion.versionName}</p>
-              <h3>{selectedVersion.label}</h3>
-              <p>{selectedVersion.summary}</p>
-            </div>
-            <ListChecks aria-hidden="true" />
-          </div>
-
-          <div className="version-feature-grid">
-            {selectedVersion.sections.map((section) => (
-              <section className="version-feature-group" key={section.title}>
-                <h4>{section.title}</h4>
-                <ul>
-                  {section.items.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
+        <article className="version-preview">
+          <ListChecks aria-hidden="true" />
+          <h3>Click a version to view updates.</h3>
+          <p>Release notes open in a dialog so the version list stays easy to scan.</p>
         </article>
       </div>
+
+      {selectedVersion ? (
+        <div className="version-dialog-backdrop" role="presentation" onClick={() => setSelectedVersion(null)}>
+          <section
+            aria-labelledby="version-dialog-title"
+            aria-modal="true"
+            className="version-dialog"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="version-details-header">
+              <div>
+                <p className="eyebrow">v{selectedVersion.versionName}</p>
+                <h3 id="version-dialog-title">{selectedVersion.label}</h3>
+                <p>{selectedVersion.summary}</p>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedVersion(null)} aria-label="Close version updates">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="version-feature-grid">
+              {selectedVersion.sections.map((section) => (
+                <section className="version-feature-group" key={section.title}>
+                  <h4>{section.title}</h4>
+                  <ul>
+                    {section.items.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -637,10 +668,11 @@ function ReviewSection() {
   const [form, setForm] = useState(REVIEW_FORM_INITIAL);
   const [status, setStatus] = useState('idle');
   const [message, setMessage] = useState('');
+  const [showAllComments, setShowAllComments] = useState(false);
 
   const loadApprovedComments = async () => {
     try {
-      const response = await fetch('/api/comments?status=approved', {
+      const response = await fetch('/api/comments?status=approved&limit=100', {
         headers: { Accept: 'application/json' }
       });
       const payload = await response.json();
@@ -652,6 +684,8 @@ function ReviewSection() {
       setComments([]);
     }
   };
+
+  const visibleComments = showAllComments ? comments : comments.slice(0, 4);
 
   useEffect(() => {
     loadApprovedComments();
@@ -692,7 +726,7 @@ function ReviewSection() {
 
       <div className="reviews-layout">
         <div className="reviews-list">
-          {comments.length ? comments.map((comment) => (
+          {comments.length ? visibleComments.map((comment) => (
             <ReviewCard comment={comment} key={comment.id} />
           )) : (
             <div className="empty-reviews">
@@ -700,6 +734,11 @@ function ReviewSection() {
               <p>Approved reviews will appear here soon.</p>
             </div>
           )}
+          {comments.length > 4 ? (
+            <button className="outline-button reviews-see-all" type="button" onClick={() => setShowAllComments(!showAllComments)}>
+              {showAllComments ? 'Show fewer' : `See all ${comments.length} comments`}
+            </button>
+          ) : null}
         </div>
 
         <form className="review-form" onSubmit={handleSubmit}>

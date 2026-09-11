@@ -563,7 +563,7 @@ button:disabled {
 
 .app-version-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.34fr) minmax(0, 0.66fr);
+  grid-template-columns: minmax(260px, 0.36fr) minmax(0, 0.64fr);
   gap: 24px;
   align-items: start;
 }
@@ -571,8 +571,6 @@ button:disabled {
 .version-list {
   display: grid;
   gap: 12px;
-  position: sticky;
-  top: 96px;
 }
 
 .version-button {
@@ -611,14 +609,60 @@ button:disabled {
   background: rgba(0, 199, 119, 0.12);
 }
 
-.version-details {
+.version-preview {
   display: grid;
-  gap: 24px;
+  justify-items: center;
+  align-content: center;
+  min-height: 220px;
   padding: clamp(22px, 4vw, 36px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
   background: linear-gradient(145deg, rgba(18, 27, 43, 0.9), rgba(8, 15, 27, 0.82));
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  text-align: center;
+}
+
+.version-preview svg {
+  width: 58px;
+  height: 58px;
+  margin-bottom: 18px;
+  color: #00c777;
+}
+
+.version-preview h3 {
+  margin: 0;
+  font-size: clamp(1.55rem, 3vw, 2.4rem);
+}
+
+.version-preview p {
+  max-width: 520px;
+  margin: 14px auto 0;
+  color: rgba(244, 248, 255, 0.68);
+  line-height: 1.5;
+}
+
+.version-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: clamp(14px, 4vw, 34px);
+  background: rgba(0, 0, 0, 0.68);
+  backdrop-filter: blur(10px);
+}
+
+.version-dialog {
+  display: grid;
+  gap: 24px;
+  width: min(100%, 1080px);
+  max-height: min(860px, 88vh);
+  overflow: auto;
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: #081121;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.56);
 }
 
 .version-details-header {
@@ -639,12 +683,6 @@ button:disabled {
   margin: 16px 0 0;
   color: rgba(244, 248, 255, 0.72);
   line-height: 1.56;
-}
-
-.version-details-header > svg {
-  width: clamp(54px, 7vw, 86px);
-  height: clamp(54px, 7vw, 86px);
-  color: #00c777;
 }
 
 .version-feature-grid {
@@ -687,6 +725,11 @@ button:disabled {
 .reviews-list {
   display: grid;
   gap: 16px;
+}
+
+.reviews-see-all {
+  justify-self: start;
+  margin-top: 4px;
 }
 
 .review-card,

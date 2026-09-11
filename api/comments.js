@@ -74,7 +74,11 @@ async function listComments(supabase, request, response) {
     return;
   }
 
-  const limit = wantsAdmin ? 100 : 6;
+  const requestedLimit = Number(request.query?.limit || 6);
+  const publicLimit = Number.isInteger(requestedLimit) && requestedLimit >= 1
+    ? Math.min(requestedLimit, 100)
+    : 6;
+  const limit = wantsAdmin ? 100 : publicLimit;
   const { data, error } = await supabase
     .from('site_comments')
     .select('id, display_name, rating, comment_text, status, created_at, approved_at')
