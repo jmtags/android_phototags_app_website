@@ -11,7 +11,9 @@ import {
   Grid2X2,
   Image as ImageIcon,
   KeyRound,
+  LayoutDashboard,
   Loader2,
+  MessageSquareText,
   Plus,
   Printer,
   RefreshCw,
@@ -681,6 +683,7 @@ function AdminPage() {
     licenses: []
   });
   const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
+  const [activeAdminSection, setActiveAdminSection] = useState('overview');
 
   useEffect(() => {
     if (!isAuthed) {
@@ -938,6 +941,31 @@ function AdminPage() {
     ],
     [analytics, licenseData]
   );
+  const adminSections = useMemo(
+    () => [
+      {
+        id: 'overview',
+        label: 'Overview',
+        icon: LayoutDashboard,
+        status: analyticsStatus
+      },
+      {
+        id: 'licenses',
+        label: 'Licenses',
+        icon: KeyRound,
+        count: licenseData.summary.active,
+        status: licenseStatus
+      },
+      {
+        id: 'comments',
+        label: 'Reviews',
+        icon: MessageSquareText,
+        count: commentTabs.pending.length,
+        status: commentStatus
+      }
+    ],
+    [analyticsStatus, commentStatus, commentTabs, licenseData, licenseStatus]
+  );
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -990,31 +1018,129 @@ function AdminPage() {
     );
   }
 
+  const renderAdminSection = () => {
+    if (activeAdminSection === 'licenses') {
+      return (
+        <AdminLicensesSection
+          data={licenseData}
+          form={licenseForm}
+          message={licenseMessage}
+          status={licenseStatus}
+          onCreate={createLicense}
+          onFormChange={setLicenseForm}
+          onRefresh={refreshLicenses}
+          onUnbindActivation={unbindActivation}
+          onUpdateLicense={updateLicense}
+        />
+      );
+    }
+
+    if (activeAdminSection === 'comments') {
+      return (
+        <AdminCommentsSection
+          comments={commentTabs}
+          status={commentStatus}
+          onRefresh={refreshAdminComments}
+          onUpdateStatus={updateCommentStatus}
+        />
+      );
+    }
+
+    return (
+      <AdminOverviewSection
+        analytics={analytics}
+        analyticsStatus={analyticsStatus}
+        cards={cards}
+      />
+    );
+  };
+
   return (
-    <main className="admin-shell">
-      <header className="admin-header">
-        <a className="brand" href="/" aria-label="PhotoTags home">
+    <main className="admin-app-shell">
+      <aside className="admin-sidebar">
+        <a className="brand admin-sidebar-brand" href="/" aria-label="PhotoTags home">
           <img src="/assets/logo-dark.png" alt="" />
           <span>PhotoTags</span>
         </a>
-        <button
-          className="outline-button"
-          type="button"
-          onClick={() => {
-            sessionStorage.removeItem('phototags.admin');
-            sessionStorage.removeItem('phototags.admin.password');
-            setAdminPassword('');
-            setIsAuthed(false);
-          }}
-        >
-          Log out
-        </button>
-      </header>
 
+        <nav className="admin-nav" aria-label="Admin sections">
+          {adminSections.map((section) => {
+            const Icon = section.icon;
+            const isActive = activeAdminSection === section.id;
+
+            return (
+              <button
+                className={isActive ? 'admin-nav-button admin-nav-button-active' : 'admin-nav-button'}
+                key={section.id}
+                type="button"
+                onClick={() => setActiveAdminSection(section.id)}
+              >
+                <Icon size={19} aria-hidden="true" />
+                <span>{section.label}</span>
+                {typeof section.count === 'number' ? <strong>{section.count}</strong> : null}
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="admin-sidebar-footer">
+          <a className="ghost-link" href="/">View website <ChevronRight size={20} /></a>
+          <button
+            className="outline-button"
+            type="button"
+            onClick={() => {
+              sessionStorage.removeItem('phototags.admin');
+              sessionStorage.removeItem('phototags.admin.password');
+              setAdminPassword('');
+              setIsAuthed(false);
+            }}
+          >
+            Log out
+          </button>
+        </div>
+      </aside>
+
+      <section className="admin-content-shell">
+        <header className="admin-topbar">
+          <div>
+            <p className="eyebrow">Admin dashboard</p>
+            <h1>{adminSections.find((section) => section.id === activeAdminSection)?.label || 'Overview'}</h1>
+          </div>
+          <nav className="admin-mobile-nav" aria-label="Admin sections">
+            {adminSections.map((section) => {
+              const Icon = section.icon;
+              const isActive = activeAdminSection === section.id;
+
+              return (
+                <button
+                  className={isActive ? 'admin-mobile-button admin-mobile-button-active' : 'admin-mobile-button'}
+                  key={section.id}
+                  type="button"
+                  onClick={() => setActiveAdminSection(section.id)}
+                  aria-label={section.label}
+                >
+                  <Icon size={18} aria-hidden="true" />
+                </button>
+              );
+            })}
+          </nav>
+        </header>
+
+        <div className="admin-section-panel">
+          {renderAdminSection()}
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function AdminOverviewSection({ analytics, analyticsStatus, cards }) {
+  return (
+    <>
       <section className="admin-hero">
         <div>
-          <p className="eyebrow">Admin dashboard</p>
-          <h1>Visits and APK downloads.</h1>
+          <p className="eyebrow">Overview</p>
+          <h1>Visits, downloads, and licenses.</h1>
           <p>
             Counts refresh automatically while this page is open.
           </p>
@@ -1052,33 +1178,13 @@ function AdminPage() {
       </section>
 
       <div className="admin-actions">
-        <a className="ghost-link" href="/">View website <ChevronRight size={20} /></a>
         <span className={`analytics-status analytics-status-${analyticsStatus}`}>
           {analyticsStatus === 'loading' ? 'Refreshing analytics' : null}
           {analyticsStatus === 'ready' ? 'Analytics up to date' : null}
           {analyticsStatus === 'error' ? 'Analytics unavailable' : null}
         </span>
       </div>
-
-      <AdminCommentsSection
-        comments={commentTabs}
-        status={commentStatus}
-        onRefresh={refreshAdminComments}
-        onUpdateStatus={updateCommentStatus}
-      />
-
-      <AdminLicensesSection
-        data={licenseData}
-        form={licenseForm}
-        message={licenseMessage}
-        status={licenseStatus}
-        onCreate={createLicense}
-        onFormChange={setLicenseForm}
-        onRefresh={refreshLicenses}
-        onUnbindActivation={unbindActivation}
-        onUpdateLicense={updateLicense}
-      />
-    </main>
+    </>
   );
 }
 
