@@ -170,6 +170,7 @@ function App() {
         </a>
         <nav className="nav-links" aria-label="Primary navigation">
           <a href="#features">Features</a>
+          <a href="#early-access">Early Access</a>
           <a href="#how-it-works">How It Works</a>
           <a href="#printer-support">Printer Support</a>
           <a href="#id-photo">ID Photo Mode</a>
@@ -199,6 +200,9 @@ function App() {
               <ChevronRight size={20} />
             </a>
           </div>
+          <p className="early-access-note">
+            PhotoTags is currently in early access. Pro licensing is being prepared, but no payment is required today.
+          </p>
           <p className="support-line">
             Works with <strong>Canon G1010</strong>
             <span>More printers coming soon</span>
@@ -284,6 +288,44 @@ function App() {
           <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
             Download APK
+          </a>
+        </div>
+      </section>
+
+      <section className="early-access-section" id="early-access">
+        <div className="early-access-copy">
+          <p className="eyebrow">PhotoTags Early Access</p>
+          <h2>Available now while Pro licensing is being prepared.</h2>
+          <p>
+            PhotoTags is currently available as an early access download while we continue improving the app.
+          </p>
+          <p>
+            A future update will introduce <strong>PhotoTags Pro</strong>, a one-time paid license for commercial and event use.
+            Existing users will be notified clearly before any pricing changes take effect.
+          </p>
+          <p>
+            Current early access users can continue using the app while we prepare licensing and activation.
+            No payment is required today.
+          </p>
+        </div>
+
+        <div className="early-access-list">
+          <h3>Planned PhotoTags Pro includes:</h3>
+          <div>
+            <BadgeCheck /><span>License activation per device</span>
+          </div>
+          <div>
+            <RefreshCw /><span>Continued app updates</span>
+          </div>
+          <div>
+            <Camera /><span>Photobooth and ID photo tools</span>
+          </div>
+          <div>
+            <ImageIcon /><span>Branding, templates, stickers, QR downloads, saved gallery, supported printers, cameras, and reprint features</span>
+          </div>
+          <a className="primary-button" href="/api/download-apk">
+            <Download size={21} />
+            Download Early Access APK
           </a>
         </div>
       </section>
