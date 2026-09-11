@@ -436,6 +436,18 @@ input {
   outline: none;
 }
 
+select {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 42px 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(8, 15, 27, 0.88);
+  color: #ffffff;
+  font: inherit;
+  outline: none;
+}
+
 textarea {
   width: 100%;
   min-height: 130px;
@@ -451,6 +463,7 @@ textarea {
 }
 
 input:focus,
+select:focus,
 textarea:focus {
   border-color: #00c777;
   box-shadow: 0 0 0 3px rgba(0, 199, 119, 0.16);
@@ -898,6 +911,17 @@ button:disabled {
   padding: clamp(22px, 4vw, 36px);
 }
 
+.admin-licenses {
+  display: grid;
+  gap: 24px;
+  margin-top: 32px;
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 27, 43, 0.88), rgba(8, 15, 27, 0.8));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
 .admin-comments-heading {
   display: flex;
   align-items: flex-end;
@@ -915,6 +939,213 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
+}
+
+.license-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+}
+
+.license-summary-item {
+  display: grid;
+  gap: 8px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.26);
+}
+
+.license-summary-item span,
+.license-meta-grid span,
+.activation-row span {
+  color: rgba(244, 248, 255, 0.66);
+  font-size: 0.92rem;
+  font-weight: 720;
+}
+
+.license-summary-item strong {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.license-create-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.28);
+}
+
+.license-form-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.license-form-title svg,
+.license-key-row svg,
+.license-empty svg {
+  color: #00c777;
+}
+
+.license-form-title h3,
+.activation-list h4 {
+  margin: 0;
+}
+
+.license-create-form label,
+.license-controls label {
+  display: grid;
+  gap: 8px;
+  color: rgba(244, 248, 255, 0.76);
+  font-weight: 720;
+}
+
+.license-list {
+  display: grid;
+  gap: 16px;
+}
+
+.license-card,
+.license-empty {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.28);
+}
+
+.license-card {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.license-card-header,
+.license-key-row,
+.activation-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.license-card-header,
+.activation-row {
+  justify-content: space-between;
+}
+
+.license-card-header p {
+  margin: 8px 0 0;
+  color: rgba(244, 248, 255, 0.64);
+  overflow-wrap: anywhere;
+}
+
+.license-key-row {
+  flex-wrap: wrap;
+}
+
+.license-key-row strong {
+  overflow-wrap: anywhere;
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.license-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 248, 255, 0.78);
+  font-weight: 830;
+}
+
+.license-status-active {
+  color: #00d887;
+}
+
+.license-status-revoked,
+.license-status-refunded,
+.license-status-expired {
+  color: #ff4c8d;
+}
+
+.license-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+
+.license-meta-grid span {
+  display: grid;
+  gap: 6px;
+  min-height: 74px;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.license-meta-grid strong {
+  color: #ffffff;
+  font-size: 0.98rem;
+  overflow-wrap: anywhere;
+}
+
+.license-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(140px, 180px);
+  gap: 14px;
+}
+
+.activation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.activation-row {
+  padding: 14px 0 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.activation-row div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.activation-row strong {
+  overflow-wrap: anywhere;
+}
+
+.activation-row .outline-button {
+  min-height: 42px;
+  padding-inline: 16px;
+  font-size: 0.92rem;
+}
+
+.license-empty {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  min-height: 180px;
+  padding: 32px;
+  text-align: center;
+}
+
+.license-empty p {
+  margin: 0;
+  color: rgba(244, 248, 255, 0.72);
 }
 
 .comment-queue {
@@ -1100,6 +1331,22 @@ button:disabled {
   .id-section {
     grid-template-columns: 1fr;
   }
+
+  .license-summary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .license-create-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .license-create-form .primary-button {
+    width: 100%;
+  }
+
+  .license-meta-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 840px) {
@@ -1108,6 +1355,8 @@ button:disabled {
   .admin-details,
   .location-grid,
   .comment-queues,
+  .license-create-form,
+  .license-controls,
   .reviews-layout {
     grid-template-columns: 1fr;
   }
@@ -1122,6 +1371,17 @@ button:disabled {
   }
 
   .admin-comments-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .license-summary-grid,
+  .license-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .license-card-header,
+  .activation-row {
     align-items: flex-start;
     flex-direction: column;
   }

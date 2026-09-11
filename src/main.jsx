@@ -6,13 +6,17 @@ import {
   BarChart3,
   Camera,
   ChevronRight,
+  Copy,
   Download,
   Grid2X2,
   Image as ImageIcon,
+  KeyRound,
   Loader2,
+  Plus,
   Printer,
   RefreshCw,
   Send,
+  ShieldCheck,
   Smartphone,
   Star,
   ThumbsUp,
@@ -37,6 +41,17 @@ const REVIEW_FORM_INITIAL = {
   rating: 5,
   commentText: ''
 };
+const LICENSE_FORM_INITIAL = {
+  licenseKey: '',
+  customerEmail: '',
+  paymentReference: '',
+  plan: 'pro_lifetime',
+  status: 'active',
+  maxDevices: 1,
+  expiresAt: ''
+};
+const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
+const LICENSE_PLAN_OPTIONS = ['pro_lifetime', 'pro_plus', 'business'];
 
 const features = [
   {
@@ -651,6 +666,21 @@ function AdminPage() {
     approved: [],
     rejected: []
   });
+  const [licenseStatus, setLicenseStatus] = useState('idle');
+  const [licenseMessage, setLicenseMessage] = useState('');
+  const [licenseData, setLicenseData] = useState({
+    summary: {
+      licenses: 0,
+      active: 0,
+      revoked: 0,
+      refunded: 0,
+      expired: 0,
+      activations: 0,
+      devices: 0
+    },
+    licenses: []
+  });
+  const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
 
   useEffect(() => {
     if (!isAuthed) {
@@ -743,6 +773,42 @@ function AdminPage() {
     refreshAdminComments();
   }, [isAuthed, adminPassword]);
 
+  const refreshLicenses = async () => {
+    if (!isAuthed || !adminPassword) {
+      return;
+    }
+
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        headers: {
+          Accept: 'application/json',
+          'X-Admin-Password': adminPassword
+        }
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error('License request failed');
+      }
+
+      setLicenseData({
+        summary: payload.summary,
+        licenses: payload.licenses || []
+      });
+      setLicenseStatus('ready');
+    } catch {
+      setLicenseStatus('error');
+      setLicenseMessage('Licenses unavailable.');
+    }
+  };
+
+  useEffect(() => {
+    refreshLicenses();
+  }, [isAuthed, adminPassword]);
+
   const updateCommentStatus = async (id, status) => {
     setCommentStatus('loading');
 
@@ -767,6 +833,94 @@ function AdminPage() {
     }
   };
 
+  const createLicense = async (event) => {
+    event.preventDefault();
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({
+          ...licenseForm,
+          licenseKey: licenseForm.licenseKey || undefined,
+          expiresAt: licenseForm.expiresAt || null,
+          maxDevices: Number(licenseForm.maxDevices || 1)
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'License create failed');
+      }
+
+      setLicenseForm(LICENSE_FORM_INITIAL);
+      setLicenseMessage(`Created ${payload.license.licenseKey}`);
+      await refreshLicenses();
+    } catch {
+      setLicenseStatus('error');
+      setLicenseMessage('Could not create license.');
+    }
+  };
+
+  const updateLicense = async (id, updates) => {
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ id, ...updates })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'License update failed');
+      }
+
+      setLicenseMessage('License updated.');
+      await refreshLicenses();
+    } catch {
+      setLicenseStatus('error');
+      setLicenseMessage('Could not update license.');
+    }
+  };
+
+  const unbindActivation = async (activationId) => {
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ action: 'unbind_device', activationId })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'License unbind failed');
+      }
+
+      setLicenseMessage('Device unbound.');
+      await refreshLicenses();
+    } catch {
+      setLicenseStatus('error');
+      setLicenseMessage('Could not unbind device.');
+    }
+  };
+
   const cards = useMemo(
     () => [
       { label: 'Site visits', value: analytics.visits },
@@ -774,9 +928,15 @@ function AdminPage() {
       {
         label: 'Download rate',
         value: analytics.visits ? `${Math.round((analytics.downloads / analytics.visits) * 100)}%` : '0%'
+      },
+      { label: 'Active licenses', value: licenseData.summary.active },
+      { label: 'Activations', value: licenseData.summary.activations },
+      {
+        label: 'Tracked devices',
+        value: licenseData.summary.devices
       }
     ],
-    [analytics]
+    [analytics, licenseData]
   );
 
   const handleSubmit = (event) => {
@@ -906,6 +1066,18 @@ function AdminPage() {
         onRefresh={refreshAdminComments}
         onUpdateStatus={updateCommentStatus}
       />
+
+      <AdminLicensesSection
+        data={licenseData}
+        form={licenseForm}
+        message={licenseMessage}
+        status={licenseStatus}
+        onCreate={createLicense}
+        onFormChange={setLicenseForm}
+        onRefresh={refreshLicenses}
+        onUnbindActivation={unbindActivation}
+        onUpdateLicense={updateLicense}
+      />
     </main>
   );
 }
@@ -927,6 +1099,219 @@ function LocationList({ title, locations }) {
         <p>No location data yet.</p>
       )}
     </article>
+  );
+}
+
+function AdminLicensesSection({
+  data,
+  form,
+  message,
+  status,
+  onCreate,
+  onFormChange,
+  onRefresh,
+  onUnbindActivation,
+  onUpdateLicense
+}) {
+  const copyLicenseKey = async (licenseKey) => {
+    if (!navigator.clipboard) {
+      return;
+    }
+
+    await navigator.clipboard.writeText(licenseKey);
+  };
+
+  return (
+    <section className="admin-licenses">
+      <div className="admin-comments-heading">
+        <div>
+          <p className="eyebrow">License management</p>
+          <h2>Track keys and activations.</h2>
+        </div>
+        <button className="outline-button" type="button" onClick={onRefresh}>
+          <RefreshCw size={18} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="license-summary-grid">
+        {[
+          ['Total licenses', data.summary.licenses],
+          ['Active', data.summary.active],
+          ['Revoked', data.summary.revoked],
+          ['Refunded', data.summary.refunded],
+          ['Expired', data.summary.expired],
+          ['Devices', data.summary.devices]
+        ].map(([label, value]) => (
+          <div className="license-summary-item" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <form className="license-create-form" onSubmit={onCreate}>
+        <div className="license-form-title">
+          <KeyRound aria-hidden="true" />
+          <h3>Create license</h3>
+        </div>
+        <label>
+          License key
+          <input
+            placeholder="Leave blank to generate"
+            value={form.licenseKey}
+            onChange={(event) => onFormChange({ ...form, licenseKey: event.target.value })}
+          />
+        </label>
+        <label>
+          Customer email
+          <input
+            type="email"
+            value={form.customerEmail}
+            onChange={(event) => onFormChange({ ...form, customerEmail: event.target.value })}
+          />
+        </label>
+        <label>
+          Payment reference
+          <input
+            value={form.paymentReference}
+            onChange={(event) => onFormChange({ ...form, paymentReference: event.target.value })}
+          />
+        </label>
+        <label>
+          Plan
+          <select
+            value={form.plan}
+            onChange={(event) => onFormChange({ ...form, plan: event.target.value })}
+          >
+            {LICENSE_PLAN_OPTIONS.map((plan) => (
+              <option key={plan} value={plan}>{plan}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Status
+          <select
+            value={form.status}
+            onChange={(event) => onFormChange({ ...form, status: event.target.value })}
+          >
+            {LICENSE_STATUS_OPTIONS.map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Max devices
+          <input
+            min="1"
+            max="1000"
+            type="number"
+            value={form.maxDevices}
+            onChange={(event) => onFormChange({ ...form, maxDevices: event.target.value })}
+          />
+        </label>
+        <label>
+          Expires at
+          <input
+            type="datetime-local"
+            value={form.expiresAt}
+            onChange={(event) => onFormChange({ ...form, expiresAt: event.target.value })}
+          />
+        </label>
+        <button className="primary-button" type="submit" disabled={status === 'loading'}>
+          <Plus size={18} />
+          Create
+        </button>
+      </form>
+
+      {message ? <p className={`analytics-status analytics-status-${status}`}>{message}</p> : null}
+
+      <div className="license-list">
+        {data.licenses.length ? data.licenses.map((license) => (
+          <article className="license-card" key={license.id}>
+            <div className="license-card-header">
+              <div>
+                <div className="license-key-row">
+                  <ShieldCheck aria-hidden="true" />
+                  <strong>{license.licenseKey}</strong>
+                  <button className="icon-button" type="button" onClick={() => copyLicenseKey(license.licenseKey)} aria-label="Copy license key">
+                    <Copy size={17} />
+                  </button>
+                </div>
+                <p>
+                  {license.customerEmail || 'No customer email'} - {license.paymentReference || 'No payment reference'}
+                </p>
+              </div>
+              <span className={`license-status license-status-${license.status}`}>{license.status}</span>
+            </div>
+
+            <div className="license-meta-grid">
+              <span>Plan <strong>{license.plan}</strong></span>
+              <span>Seats <strong>{license.activationCount}/{license.maxDevices}</strong></span>
+              <span>Created <strong>{formatReviewDate(license.createdAt)}</strong></span>
+              <span>Activated <strong>{formatDate(license.activatedAt)}</strong></span>
+              <span>Expires <strong>{formatDate(license.expiresAt)}</strong></span>
+            </div>
+
+            <div className="license-controls">
+              <label>
+                Status
+                <select value={license.status} onChange={(event) => onUpdateLicense(license.id, { status: event.target.value })}>
+                  {LICENSE_STATUS_OPTIONS.map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Max devices
+                <input
+                  min="1"
+                  max="1000"
+                  type="number"
+                  defaultValue={license.maxDevices}
+                  onBlur={(event) => {
+                    const nextValue = Number(event.target.value);
+                    if (nextValue !== license.maxDevices) {
+                      onUpdateLicense(license.id, { maxDevices: nextValue });
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="activation-list">
+              <h4>Activations</h4>
+              {license.activations.length ? license.activations.map((activation) => (
+                <div className="activation-row" key={activation.id}>
+                  <div>
+                    <strong>{activation.deviceId}</strong>
+                    <span>
+                      {activation.device?.platform || 'android'} - {activation.device?.appVersion || 'unknown app'} - last checked {formatDate(activation.lastCheckedAt)}
+                    </span>
+                  </div>
+                  <button className="outline-button" type="button" onClick={() => onUnbindActivation(activation.id)}>
+                    Unbind
+                  </button>
+                </div>
+              )) : (
+                <p className="queue-empty">No devices activated yet.</p>
+              )}
+            </div>
+          </article>
+        )) : (
+          <div className="license-empty">
+            <KeyRound aria-hidden="true" />
+            <p>No licenses created yet.</p>
+          </div>
+        )}
+      </div>
+
+      <p className={`analytics-status analytics-status-${status}`}>
+        {status === 'loading' ? 'Refreshing licenses' : null}
+        {status === 'ready' ? 'Licenses up to date' : null}
+        {status === 'error' ? 'License tools unavailable' : null}
+      </p>
+    </section>
   );
 }
 
