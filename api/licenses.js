@@ -56,7 +56,9 @@ function getText(body, camelName, snakeName = camelName) {
 }
 
 function getNullableDate(body, camelName, snakeName = camelName) {
-  const value = body[camelName] ?? body[snakeName];
+  const value = Object.prototype.hasOwnProperty.call(body, camelName)
+    ? body[camelName]
+    : body[snakeName];
 
   if (value === null) {
     return null;

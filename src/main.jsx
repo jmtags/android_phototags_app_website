@@ -864,9 +864,9 @@ function AdminPage() {
       setLicenseForm(LICENSE_FORM_INITIAL);
       setLicenseMessage(`Created ${payload.license.licenseKey}`);
       await refreshLicenses();
-    } catch {
+    } catch (error) {
       setLicenseStatus('error');
-      setLicenseMessage('Could not create license.');
+      setLicenseMessage(`Could not create license${error.message ? `: ${error.message}` : ''}.`);
     }
   };
 
@@ -891,9 +891,9 @@ function AdminPage() {
 
       setLicenseMessage('License updated.');
       await refreshLicenses();
-    } catch {
+    } catch (error) {
       setLicenseStatus('error');
-      setLicenseMessage('Could not update license.');
+      setLicenseMessage(`Could not update license${error.message ? `: ${error.message}` : ''}.`);
     }
   };
 
@@ -918,9 +918,9 @@ function AdminPage() {
 
       setLicenseMessage('Device unbound.');
       await refreshLicenses();
-    } catch {
+    } catch (error) {
       setLicenseStatus('error');
-      setLicenseMessage('Could not unbind device.');
+      setLicenseMessage(`Could not unbind device${error.message ? `: ${error.message}` : ''}.`);
     }
   };
 
