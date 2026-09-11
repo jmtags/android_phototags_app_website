@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   KeyRound,
   LayoutDashboard,
+  ListChecks,
   Loader2,
   MessageSquareText,
   Plus,
@@ -54,6 +55,85 @@ const LICENSE_FORM_INITIAL = {
 };
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
 const LICENSE_PLAN_OPTIONS = ['pro_lifetime', 'pro_plus', 'business'];
+const appVersions = [
+  {
+    versionName: '0.2.18',
+    versionCode: 29,
+    label: 'Latest early access build',
+    date: 'September 2026',
+    summary: 'Current PhotoTags early access build with photobooth, ID photo, gallery reprint, QR download, printer, camera, admin, update, and licensing preparation features.',
+    sections: [
+      {
+        title: 'Modes',
+        items: ['Photobooth mode', 'Photo ID mode', 'Saved photo gallery / reprint mode', 'Admin settings mode']
+      },
+      {
+        title: 'Photobooth Mode',
+        items: ['Start session flow', 'Capture 4 photos per session', 'Camera countdown timer', 'Template selection step', 'Final preview before printing', 'Optional signature/decorate step', 'Auto-print option after preview', 'QR download option for finished photo', 'Local save of finished photobooth output', 'Saved photos organized by date folders']
+      },
+      {
+        title: 'Photobooth Templates',
+        items: ['Double strip template', 'Classic / built-in 4R templates', 'Custom admin template', 'Additional 4R themed templates: Birthday party, Chrome bubbles, Disco party, Floral garden, Luxe black, Modern botanical, Pop blocks, Retro pop, Scrapbook, Sea glass, Starry night, Sweet love, Tropical summer, Zen mountains, Christmas rustic, Mystic moon, Retro Christmas film, Winter village, Cute Halloween, Gothic moon, Neon Halloween, Autumn pumpkin, Candy Christmas, Elegant holiday']
+      },
+      {
+        title: 'Signature / Decoration',
+        items: ['Signature drawing on photobooth output', 'Pen colors', 'Eraser', 'Undo', 'Redo', 'Clear signature', 'Cute Icons tab', 'Cute Stickers section', 'Funny Faces stickers', 'Hearts stickers', 'Flowers stickers', 'Party stickers', 'Kiosk Wow stickers', 'Wacky Words stickers', '50 optimized image stickers', 'Sticker drag/move', 'Sticker resize', 'Sticker rotation', 'Sticker remove', 'Clear icons']
+      },
+      {
+        title: 'Photo ID Mode',
+        items: ['Take photo or select existing photo', 'Face/photo review', '2 x 2 layout', '1 x 1 layout', 'Mixed ID layout', '4R paper support', 'Improved maximized ID layout', 'Mixed layout with larger 2 x 2 and smaller 1 x 1 photos', 'Background options: Original, White, Blue', 'QR/download upload support for finished ID photo']
+      },
+      {
+        title: 'Printing',
+        items: ['Direct USB/OTG printing', 'Canon print path', 'Epson print path', 'Print status display', 'Branded print initialization animation', 'Photobooth printing', 'Photo ID printing', 'Saved photo reprint', 'Reprint copy count controls', 'Print speed setting', 'Color brightness setting', 'Color vibrance setting', 'Color contrast setting', 'Media type setting', 'Paper size setting', 'Print orientation setting']
+      },
+      {
+        title: 'Supported Printers',
+        items: ['Canon PIXMA G1010', 'Epson L18050', 'Epson L121 experimental support']
+      },
+      {
+        title: 'Supported Cameras',
+        items: ['Android built-in camera', 'Front camera with rear camera fallback', 'USB webcam support through UVC/OTG', 'UVC-compatible Logitech-style webcams']
+      },
+      {
+        title: 'Saved Gallery',
+        items: ['Main screen gallery access button', 'View saved photo folders', 'Folder tiles with preview', 'Folder photo count', 'Browse saved photos', 'View saved photo', 'Reprint saved photo', 'Set number of reprint copies']
+      },
+      {
+        title: 'Admin Settings',
+        items: ['Kiosk mode selection', 'Camera source selection', 'Camera timer selection', 'Online download QR toggle', 'Photobooth auto-print toggle', 'Signature step toggle', 'ID photo gallery select toggle', 'Privacy policy viewer', 'Use policy viewer']
+      },
+      {
+        title: 'Branding',
+        items: ['Business name setting', 'Tagline setting', 'Landing page background image', 'Landing page logo', 'Remove background button', 'Remove logo button', 'Custom landing page branding display']
+      },
+      {
+        title: 'Layout Admin',
+        items: ['Choose default photobooth template', 'Choose visible customer templates', 'Lock customers to Admin template', 'Custom template background upload', 'Custom template frame controls', 'Custom template background placement', 'Option to put uploaded background in front of frames', 'Transparency-aware layering for PNG/GIF-style backgrounds']
+      },
+      {
+        title: 'Online / QR',
+        items: ['Upload finished photo for download', 'Generate QR code', 'Show QR code after session', 'QR expiry support from server response', 'Upload failure status handling']
+      },
+      {
+        title: 'Licensing',
+        items: ['Device registration with website API', 'License activation with license key', 'License check with website API', 'Stable device ID generation', 'Local license key storage', 'One license per device support', 'Admin license status section', 'Trial/licensed/blocked status support']
+      },
+      {
+        title: 'Hidden Tools',
+        items: ['Tools tab hidden by default', 'Unlock Tools tab by tapping the PhotoTags header 15 times', 'Printer tools', 'USB webcam/probe tools', 'App debug logs', 'Copy/clear debug logs']
+      },
+      {
+        title: 'App Update',
+        items: ['Checks website version.json', 'Shows update dialog when newer version is available', 'Opens APK download link']
+      },
+      {
+        title: 'Privacy / Policy',
+        items: ['Privacy policy dialog', 'Use policy dialog', 'Required policy acceptance before using the app']
+      }
+    ]
+  }
+];
 
 const features = [
   {
@@ -171,6 +251,7 @@ function App() {
         <nav className="nav-links" aria-label="Primary navigation">
           <a href="#features">Features</a>
           <a href="#early-access">Early Access</a>
+          <a href="#app-versions">Versions</a>
           <a href="#how-it-works">How It Works</a>
           <a href="#printer-support">Printer Support</a>
           <a href="#id-photo">ID Photo Mode</a>
@@ -330,6 +411,8 @@ function App() {
         </div>
       </section>
 
+      <AppVersionsSection />
+
       <ReviewSection />
 
       <footer className="site-footer">
@@ -469,6 +552,65 @@ function RatingStars({ rating, onChange, size = 18 }) {
         );
       })}
     </div>
+  );
+}
+
+function AppVersionsSection() {
+  const [activeVersion, setActiveVersion] = useState(appVersions[0].versionName);
+  const selectedVersion = appVersions.find((version) => version.versionName === activeVersion) || appVersions[0];
+
+  return (
+    <section className="app-versions-section" id="app-versions">
+      <div className="section-heading">
+        <p className="eyebrow">App versions</p>
+        <h2>See what is included in each PhotoTags build.</h2>
+      </div>
+
+      <div className="app-version-layout">
+        <div className="version-list" role="list" aria-label="PhotoTags versions">
+          {appVersions.map((version) => {
+            const isActive = version.versionName === activeVersion;
+
+            return (
+              <button
+                className={isActive ? 'version-button version-button-active' : 'version-button'}
+                key={version.versionName}
+                type="button"
+                onClick={() => setActiveVersion(version.versionName)}
+              >
+                <span>{version.label}</span>
+                <strong>v{version.versionName}</strong>
+                <small>Version code {version.versionCode} - {version.date}</small>
+              </button>
+            );
+          })}
+        </div>
+
+        <article className="version-details">
+          <div className="version-details-header">
+            <div>
+              <p className="eyebrow">v{selectedVersion.versionName}</p>
+              <h3>{selectedVersion.label}</h3>
+              <p>{selectedVersion.summary}</p>
+            </div>
+            <ListChecks aria-hidden="true" />
+          </div>
+
+          <div className="version-feature-grid">
+            {selectedVersion.sections.map((section) => (
+              <section className="version-feature-group" key={section.title}>
+                <h4>{section.title}</h4>
+                <ul>
+                  {section.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </article>
+      </div>
+    </section>
   );
 }
 
