@@ -255,6 +255,7 @@ function App() {
           <a href="#app-versions">Versions</a>
           <a href="#how-it-works">How It Works</a>
           <a href="#printer-support">Printer Support</a>
+          <a href="#recommended-device">Device</a>
           <a href="#id-photo">ID Photo Mode</a>
           <a href="#reviews">Reviews</a>
         </nav>
@@ -333,6 +334,39 @@ function App() {
         <div>
           <Wifi />
           <span>Android camera and Logitech C270 USB webcam supported</span>
+        </div>
+      </section>
+
+      <section className="recommended-device-section" id="recommended-device">
+        <div className="section-heading">
+          <p className="eyebrow">Recommended Device</p>
+          <h2>Set up PhotoTags on hardware that can keep up.</h2>
+        </div>
+        <div className="device-requirements-grid">
+          <article>
+            <Smartphone aria-hidden="true" />
+            <span>Android 10 or newer tablet/phone</span>
+          </article>
+          <article>
+            <BadgeCheck aria-hidden="true" />
+            <span>At least 3 GB RAM</span>
+          </article>
+          <article>
+            <Camera aria-hidden="true" />
+            <span>Good front camera or UVC USB webcam</span>
+          </article>
+          <article>
+            <Wifi aria-hidden="true" />
+            <span>USB OTG support</span>
+          </article>
+          <article>
+            <RefreshCw aria-hidden="true" />
+            <span>Stable internet for QR upload/download and license checks</span>
+          </article>
+          <article>
+            <ImageIcon aria-hidden="true" />
+            <span>Enough storage for saved photobooth images</span>
+          </article>
         </div>
       </section>
 

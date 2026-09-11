@@ -252,7 +252,8 @@ a {
 
 .feature-band,
 .info-strip,
-.steps-grid {
+.steps-grid,
+.device-requirements-grid {
   display: grid;
   gap: 24px;
 }
@@ -341,8 +342,46 @@ a {
 }
 
 .showcase,
-.id-section {
+.id-section,
+.recommended-device-section {
   margin-top: clamp(54px, 8vw, 112px);
+}
+
+.device-requirements-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.device-requirements-grid article {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 108px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: linear-gradient(145deg, rgba(18, 27, 43, 0.86), rgba(8, 15, 27, 0.78));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.device-requirements-grid svg {
+  width: 34px;
+  height: 34px;
+  color: #00c777;
+}
+
+.device-requirements-grid article:nth-child(2n) svg {
+  color: #1578ff;
+}
+
+.device-requirements-grid article:nth-child(3n) svg {
+  color: #ff347f;
+}
+
+.device-requirements-grid span {
+  color: rgba(244, 248, 255, 0.84);
+  font-weight: 740;
+  line-height: 1.4;
 }
 
 .section-heading {
@@ -1733,7 +1772,8 @@ button:disabled {
   }
 
   .feature-band,
-  .steps-grid {
+  .steps-grid,
+  .device-requirements-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 
@@ -1922,7 +1962,8 @@ button:disabled {
   }
 
   .feature-band,
-  .steps-grid {
+  .steps-grid,
+  .device-requirements-grid {
     grid-template-columns: 1fr;
   }
 
