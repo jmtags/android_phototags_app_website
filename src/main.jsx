@@ -14,6 +14,8 @@ import {
   LayoutDashboard,
   ListChecks,
   Loader2,
+  Building2,
+  Menu,
   MessageSquareText,
   Plus,
   Printer,
@@ -214,20 +216,26 @@ function formatReviewDate(value) {
 }
 
 function App() {
+  const [isSiteMenuOpen, setIsSiteMenuOpen] = useState(false);
   const isAdminPage = window.location.pathname === '/admin' || window.location.hash === '#admin';
+  const isBusinessPage = window.location.pathname.startsWith('/business');
   const downloadMatch = window.location.pathname.match(/^\/download\/([A-Za-z0-9_-]{4,64})\/?$/);
   const isDownloadPage = Boolean(downloadMatch);
   const isPrivacyPage = window.location.pathname === '/privacy-policy';
   const isUsePolicyPage = window.location.pathname === '/use-policy';
 
   useEffect(() => {
-    if (!isAdminPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage) {
+    if (!isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage) {
       trackAnalyticsEvent('site_visit');
     }
-  }, [isAdminPage, isDownloadPage, isPrivacyPage, isUsePolicyPage]);
+  }, [isAdminPage, isBusinessPage, isDownloadPage, isPrivacyPage, isUsePolicyPage]);
 
   if (isAdminPage) {
     return <AdminPage />;
+  }
+
+  if (isBusinessPage) {
+    return <BusinessPage />;
   }
 
   if (isDownloadPage) {
@@ -242,6 +250,17 @@ function App() {
     return <PolicyPage type="use" />;
   }
 
+  const siteLinks = [
+    ['#features', 'Features'],
+    ['#early-access', 'Early Access'],
+    ['#app-versions', 'Versions'],
+    ['#how-it-works', 'How It Works'],
+    ['#printer-support', 'Printers'],
+    ['#recommended-device', 'Device'],
+    ['#id-photo', 'ID Photo'],
+    ['#reviews', 'Reviews']
+  ];
+
   return (
     <main className="page-shell">
       <header className="site-header">
@@ -250,19 +269,38 @@ function App() {
           <span>PhotoTags</span>
         </a>
         <nav className="nav-links" aria-label="Primary navigation">
-          <a href="#features">Features</a>
-          <a href="#early-access">Early Access</a>
-          <a href="#app-versions">Versions</a>
-          <a href="#how-it-works">How It Works</a>
-          <a href="#printer-support">Printer Support</a>
-          <a href="#recommended-device">Device</a>
-          <a href="#id-photo">ID Photo Mode</a>
-          <a href="#reviews">Reviews</a>
+          {siteLinks.map(([href, label]) => (
+            <a href={href} key={href}>{label}</a>
+          ))}
         </nav>
-        <a className="outline-button" href="/api/download-apk">
-          <Download size={18} />
-          Download APK
-        </a>
+        <div className="site-header-actions">
+          <a className="ghost-link business-link" href="/business">Business</a>
+          <a className="outline-button" href="/api/download-apk">
+            <Download size={18} />
+            Download APK
+          </a>
+          <button
+            aria-expanded={isSiteMenuOpen}
+            aria-label="Open menu"
+            className="menu-button"
+            type="button"
+            onClick={() => setIsSiteMenuOpen(!isSiteMenuOpen)}
+          >
+            <Menu size={21} />
+          </button>
+        </div>
+        {isSiteMenuOpen ? (
+          <nav className="mobile-menu-panel" aria-label="Mobile navigation">
+            {siteLinks.map(([href, label]) => (
+              <a href={href} key={href} onClick={() => setIsSiteMenuOpen(false)}>{label}</a>
+            ))}
+            <a href="/business" onClick={() => setIsSiteMenuOpen(false)}>Business Dashboard</a>
+            <a className="mobile-download-link" href="/api/download-apk" onClick={() => setIsSiteMenuOpen(false)}>
+              <Download size={18} />
+              Download APK
+            </a>
+          </nav>
+        ) : null}
       </header>
 
       <section className="hero" id="top">
@@ -812,6 +850,294 @@ function ReviewSection() {
   );
 }
 
+const BUSINESS_AUTH_INITIAL = {
+  businessName: '',
+  ownerName: '',
+  email: '',
+  password: ''
+};
+
+const PAYMONGO_FORM_INITIAL = {
+  paymongoPublicKey: '',
+  paymongoSecretKey: '',
+  qrphEnabled: true,
+  webhookEnabled: false
+};
+
+function formatMoney(amount, currency = 'PHP') {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency
+  }).format(Number(amount || 0) / 100);
+}
+
+function BusinessPage() {
+  const [mode, setMode] = useState('login');
+  const [authForm, setAuthForm] = useState(BUSINESS_AUTH_INITIAL);
+  const [paymongoForm, setPaymongoForm] = useState(PAYMONGO_FORM_INITIAL);
+  const [dashboard, setDashboard] = useState(null);
+  const [status, setStatus] = useState('loading');
+  const [message, setMessage] = useState('');
+
+  const loadDashboard = async () => {
+    setStatus('loading');
+    try {
+      const response = await fetch('/api/business/dashboard', { headers: { Accept: 'application/json' } });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'dashboard_unavailable');
+      }
+
+      setDashboard(payload);
+      setPaymongoForm({
+        paymongoPublicKey: payload.paymentSettings.paymongoPublicKey || '',
+        paymongoSecretKey: '',
+        qrphEnabled: payload.paymentSettings.qrphEnabled,
+        webhookEnabled: payload.paymentSettings.webhookEnabled
+      });
+      setStatus('ready');
+    } catch {
+      setDashboard(null);
+      setStatus('auth');
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+  }, []);
+
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    setStatus('loading');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/business/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: mode, ...authForm })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'auth_failed');
+      }
+
+      setAuthForm(BUSINESS_AUTH_INITIAL);
+      await loadDashboard();
+    } catch (error) {
+      setStatus('auth');
+      setMessage(`Could not ${mode}: ${error.message}.`);
+    }
+  };
+
+  const savePayMongo = async (event) => {
+    event.preventDefault();
+    setStatus('loading');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/business/paymongo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymongoForm)
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'save_failed');
+      }
+
+      setMessage('PayMongo settings saved.');
+      await loadDashboard();
+    } catch (error) {
+      setStatus('ready');
+      setMessage(`Could not save PayMongo settings: ${error.message}.`);
+    }
+  };
+
+  const removePayMongo = async () => {
+    setStatus('loading');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/business/paymongo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'remove' })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'remove_failed');
+      }
+
+      setMessage('PayMongo credentials removed.');
+      await loadDashboard();
+    } catch (error) {
+      setStatus('ready');
+      setMessage(`Could not remove PayMongo settings: ${error.message}.`);
+    }
+  };
+
+  const generatePairingCode = async () => {
+    setStatus('loading');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/business/pairing-code', { method: 'POST' });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'pairing_failed');
+      }
+
+      setMessage(`Pairing code ${payload.pairingCode.code} created.`);
+      await loadDashboard();
+    } catch (error) {
+      setStatus('ready');
+      setMessage(`Could not create pairing code: ${error.message}.`);
+    }
+  };
+
+  const logout = async () => {
+    await fetch('/api/business/auth', { method: 'DELETE' });
+    setDashboard(null);
+    setStatus('auth');
+  };
+
+  if (status === 'loading' && !dashboard) {
+    return (
+      <main className="business-shell business-auth-shell">
+        <Loader2 className="spin-icon" aria-hidden="true" />
+      </main>
+    );
+  }
+
+  if (!dashboard) {
+    return (
+      <main className="business-shell business-auth-shell">
+        <section className="business-auth-panel">
+          <a className="brand admin-brand" href="/" aria-label="PhotoTags home">
+            <img src="/assets/logo-dark.png" alt="" />
+            <span>PhotoTags</span>
+          </a>
+          <p className="eyebrow">Business dashboard</p>
+          <h1>{mode === 'register' ? 'Create your business account.' : 'Sign in to your business account.'}</h1>
+          <div className="business-auth-tabs">
+            <button className={mode === 'login' ? 'business-tab-active' : ''} type="button" onClick={() => setMode('login')}>Login</button>
+            <button className={mode === 'register' ? 'business-tab-active' : ''} type="button" onClick={() => setMode('register')}>Register</button>
+          </div>
+          <form className="login-form" onSubmit={submitAuth}>
+            {mode === 'register' ? (
+              <>
+                <label>Business name<input required value={authForm.businessName} onChange={(event) => setAuthForm({ ...authForm, businessName: event.target.value })} /></label>
+                <label>Owner name<input required value={authForm.ownerName} onChange={(event) => setAuthForm({ ...authForm, ownerName: event.target.value })} /></label>
+              </>
+            ) : null}
+            <label>Email<input required type="email" value={authForm.email} onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })} /></label>
+            <label>Password<input required minLength={8} type="password" value={authForm.password} onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })} /></label>
+            {message ? <p className="login-error">{message}</p> : null}
+            <button className="primary-button" type="submit">{mode === 'register' ? 'Create Account' : 'Log In'}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  const settings = dashboard.paymentSettings;
+  const summary = dashboard.summary;
+
+  return (
+    <main className="business-shell">
+      <header className="business-header">
+        <a className="brand" href="/" aria-label="PhotoTags home">
+          <img src="/assets/logo-dark.png" alt="" />
+          <span>PhotoTags</span>
+        </a>
+        <button className="outline-button" type="button" onClick={logout}>Log out</button>
+      </header>
+
+      <section className="business-hero">
+        <div>
+          <p className="eyebrow">Business dashboard</p>
+          <h1>{dashboard.business.businessName}</h1>
+          <p>{dashboard.business.ownerName} - {dashboard.business.email}</p>
+        </div>
+        <ShieldCheck aria-hidden="true" />
+      </section>
+
+      <section className="business-status-grid">
+        <article><span>PayMongo</span><strong>{settings.paymongoConnected ? 'Connected' : 'Not connected'}</strong></article>
+        <article><span>QRPH</span><strong>{settings.qrphEnabled ? 'Enabled' : 'Not enabled'}</strong></article>
+        <article><span>Linked devices</span><strong>{summary.linkedDevices}</strong></article>
+      </section>
+
+      {message ? <p className="business-message">{message}</p> : null}
+
+      <section className="business-grid">
+        <article className="business-card">
+          <h2>PayMongo setup</h2>
+          <form className="business-form" onSubmit={savePayMongo}>
+            <label>Public key<input required value={paymongoForm.paymongoPublicKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoPublicKey: event.target.value })} /></label>
+            <label>Secret key<input required={!settings.secretKeySaved} type="password" placeholder={settings.secretKeySaved ? 'Saved - enter a new key to replace' : ''} value={paymongoForm.paymongoSecretKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoSecretKey: event.target.value })} /></label>
+            <label className="business-check"><input type="checkbox" checked={paymongoForm.qrphEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, qrphEnabled: event.target.checked })} /> QRPH enabled</label>
+            <label className="business-check"><input type="checkbox" checked={paymongoForm.webhookEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, webhookEnabled: event.target.checked })} /> Webhook enabled</label>
+            <div className="business-actions">
+              <button className="primary-button" type="submit">Save PayMongo</button>
+              <button className="outline-button" type="button" onClick={removePayMongo}>Remove</button>
+            </div>
+          </form>
+        </article>
+
+        <article className="business-card">
+          <h2>Device pairing</h2>
+          {dashboard.activePairingCode ? (
+            <div className="pairing-code-box">
+              <span>Active pairing code</span>
+              <strong>{dashboard.activePairingCode.code}</strong>
+              <small>Expires {formatDate(dashboard.activePairingCode.expires_at)}</small>
+            </div>
+          ) : (
+            <p className="queue-empty">No active pairing code.</p>
+          )}
+          <button className="primary-button" type="button" onClick={generatePairingCode}>Generate Pairing Code</button>
+        </article>
+      </section>
+
+      <section className="business-card">
+        <h2>Registered devices</h2>
+        <div className="business-table">
+          {(dashboard.devices || []).length ? dashboard.devices.map((device) => (
+            <div className="business-row" key={device.device_id}>
+              <strong>{device.device_id}</strong>
+              <span>{device.platform || 'android'}</span>
+              <span>{device.app_version || 'unknown'}</span>
+              <span>{formatDate(device.last_seen_at)}</span>
+            </div>
+          )) : <p className="queue-empty">No linked devices yet.</p>}
+        </div>
+      </section>
+
+      <section className="business-card">
+        <h2>Payment history</h2>
+        <div className="business-table">
+          {(dashboard.payments || []).length ? dashboard.payments.map((payment) => (
+            <div className="business-row" key={payment.id}>
+              <strong>{formatMoney(payment.amount, payment.currency)}</strong>
+              <span>{payment.mode}</span>
+              <span>{payment.status}</span>
+              <span>{payment.device_id}</span>
+              <span>{payment.paid_at ? formatDate(payment.paid_at) : formatDate(payment.created_at)}</span>
+            </div>
+          )) : <p className="queue-empty">No payment sessions yet.</p>}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function DownloadPhotoPage({ code }) {
   const [downloadState, setDownloadState] = useState({
     status: 'loading',
@@ -937,7 +1263,9 @@ function AdminPage() {
       activations: 0,
       devices: 0
     },
-    licenses: []
+    licenses: [],
+    businesses: [],
+    paymentSessions: []
   });
   const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
   const [activeAdminSection, setActiveAdminSection] = useState('overview');
@@ -1056,7 +1384,9 @@ function AdminPage() {
 
       setLicenseData({
         summary: payload.summary,
-        licenses: payload.licenses || []
+        licenses: payload.licenses || [],
+        businesses: payload.businesses || [],
+        paymentSessions: payload.paymentSessions || []
       });
       setLicenseStatus('ready');
     } catch {
@@ -1214,6 +1544,13 @@ function AdminPage() {
         status: licenseStatus
       },
       {
+        id: 'businesses',
+        label: 'Businesses',
+        icon: Building2,
+        count: licenseData.businesses.length,
+        status: licenseStatus
+      },
+      {
         id: 'comments',
         label: 'Reviews',
         icon: MessageSquareText,
@@ -1299,6 +1636,17 @@ function AdminPage() {
           status={commentStatus}
           onRefresh={refreshAdminComments}
           onUpdateStatus={updateCommentStatus}
+        />
+      );
+    }
+
+    if (activeAdminSection === 'businesses') {
+      return (
+        <AdminBusinessesSection
+          businesses={licenseData.businesses}
+          paymentSessions={licenseData.paymentSessions}
+          status={licenseStatus}
+          onRefresh={refreshLicenses}
         />
       );
     }
@@ -1673,6 +2021,101 @@ function AdminLicensesSection({
         {status === 'loading' ? 'Refreshing licenses' : null}
         {status === 'ready' ? 'Licenses up to date' : null}
         {status === 'error' ? 'License tools unavailable' : null}
+      </p>
+    </section>
+  );
+}
+
+function AdminBusinessesSection({ businesses, paymentSessions, status, onRefresh }) {
+  return (
+    <section className="admin-licenses">
+      <div className="admin-comments-heading">
+        <div>
+          <p className="eyebrow">Business accounts</p>
+          <h2>Owners, devices, and payments.</h2>
+        </div>
+        <button className="outline-button" type="button" onClick={onRefresh}>
+          <RefreshCw size={18} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="license-summary-grid">
+        {[
+          ['Businesses', businesses.length],
+          ['Connected PayMongo', businesses.filter((business) => business.paymongoConnected).length],
+          ['QRPH enabled', businesses.filter((business) => business.qrphEnabled).length],
+          ['Linked devices', businesses.reduce((total, business) => total + business.linkedDevices.length, 0)],
+          ['Payment sessions', paymentSessions.length],
+          ['Paid sessions', paymentSessions.filter((payment) => payment.status === 'paid').length]
+        ].map(([label, value]) => (
+          <div className="license-summary-item" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="license-list">
+        {businesses.length ? businesses.map((business) => (
+          <article className="license-card" key={business.id}>
+            <div className="license-card-header">
+              <div>
+                <div className="license-key-row">
+                  <Building2 aria-hidden="true" />
+                  <strong>{business.businessName}</strong>
+                </div>
+                <p>{business.ownerName} - {business.email}</p>
+              </div>
+              <span className={business.paymongoConnected ? 'license-status license-status-active' : 'license-status'}>
+                {business.paymongoConnected ? 'PayMongo connected' : 'PayMongo not connected'}
+              </span>
+            </div>
+
+            <div className="license-meta-grid">
+              <span>Status <strong>{business.status}</strong></span>
+              <span>QRPH <strong>{business.qrphEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
+              <span>Webhook <strong>{business.webhookEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
+              <span>Devices <strong>{business.linkedDevices.length}</strong></span>
+              <span>Payments <strong>{business.paymentSessions.length}</strong></span>
+            </div>
+
+            <div className="activation-list">
+              <h4>Linked devices</h4>
+              {business.linkedDevices.length ? business.linkedDevices.slice(0, 6).map((device) => (
+                <div className="activation-row" key={device.device_id}>
+                  <div>
+                    <strong>{device.device_id}</strong>
+                    <span>{device.platform || 'android'} - {device.app_version || 'unknown'} - last seen {formatDate(device.last_seen_at)}</span>
+                  </div>
+                </div>
+              )) : <p className="queue-empty">No linked devices.</p>}
+            </div>
+
+            <div className="activation-list">
+              <h4>Recent payments</h4>
+              {business.paymentSessions.length ? business.paymentSessions.slice(0, 6).map((payment) => (
+                <div className="activation-row" key={payment.id}>
+                  <div>
+                    <strong>{formatMoney(payment.amount, payment.currency)} - {payment.status}</strong>
+                    <span>{payment.mode} - {payment.device_id} - {formatDate(payment.created_at)}</span>
+                  </div>
+                </div>
+              )) : <p className="queue-empty">No payment sessions.</p>}
+            </div>
+          </article>
+        )) : (
+          <div className="license-empty">
+            <Building2 aria-hidden="true" />
+            <p>No business accounts yet.</p>
+          </div>
+        )}
+      </div>
+
+      <p className={`analytics-status analytics-status-${status}`}>
+        {status === 'loading' ? 'Refreshing businesses' : null}
+        {status === 'ready' ? 'Businesses up to date' : null}
+        {status === 'error' ? 'Business tools unavailable' : null}
       </p>
     </section>
   );

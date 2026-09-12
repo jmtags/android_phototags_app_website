@@ -190,11 +190,82 @@ async function listLicenses(supabase, response) {
     activationsByLicense.set(activation.license_id, rows);
   });
 
+  const { data: businesses, error: businessesError } = await supabase
+    .from('businesses')
+    .select('id, business_name, owner_name, email, status, created_at, updated_at, business_payment_settings(paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled, webhook_enabled)')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (businessesError && businessesError.code !== '42P01') {
+    sendJson(response, 500, { ok: false, status: 'businesses_failed' });
+    return;
+  }
+
+  const { data: businessDevices, error: businessDevicesError } = await supabase
+    .from('devices')
+    .select('device_id, business_id, app_version, platform, status, paired_at, last_seen_at')
+    .not('business_id', 'is', null)
+    .order('last_seen_at', { ascending: false })
+    .limit(500);
+
+  if (businessDevicesError && businessDevicesError.code !== '42703') {
+    sendJson(response, 500, { ok: false, status: 'business_devices_failed' });
+    return;
+  }
+
+  const { data: paymentSessions, error: paymentSessionsError } = await supabase
+    .from('payment_sessions')
+    .select('id, business_id, device_id, mode, amount, currency, status, paid_at, expires_at, created_at')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  if (paymentSessionsError && paymentSessionsError.code !== '42P01') {
+    sendJson(response, 500, { ok: false, status: 'payment_sessions_failed' });
+    return;
+  }
+
+  const devicesByBusiness = new Map();
+  (businessDevices || []).forEach((device) => {
+    const rows = devicesByBusiness.get(device.business_id) || [];
+    rows.push(device);
+    devicesByBusiness.set(device.business_id, rows);
+  });
+
+  const paymentsByBusiness = new Map();
+  (paymentSessions || []).forEach((payment) => {
+    const rows = paymentsByBusiness.get(payment.business_id) || [];
+    rows.push(payment);
+    paymentsByBusiness.set(payment.business_id, rows);
+  });
+
+  const normalizedBusinesses = (businesses || []).map((business) => {
+    const settings = Array.isArray(business.business_payment_settings)
+      ? business.business_payment_settings[0]
+      : business.business_payment_settings;
+
+    return {
+      id: business.id,
+      businessName: business.business_name,
+      ownerName: business.owner_name,
+      email: business.email,
+      status: business.status,
+      createdAt: business.created_at,
+      updatedAt: business.updated_at,
+      paymongoConnected: Boolean(settings?.paymongo_public_key && settings?.paymongo_secret_key_encrypted),
+      qrphEnabled: Boolean(settings?.qrph_enabled),
+      webhookEnabled: Boolean(settings?.webhook_enabled),
+      linkedDevices: devicesByBusiness.get(business.id) || [],
+      paymentSessions: paymentsByBusiness.get(business.id) || []
+    };
+  });
+
   sendJson(response, 200, {
     ok: true,
     status: 'ready',
     summary: buildSummary(licenses || [], (activations || []).length, deviceCount || 0),
-    licenses: (licenses || []).map((license) => normalizeLicense(license, activationsByLicense.get(license.id) || []))
+    licenses: (licenses || []).map((license) => normalizeLicense(license, activationsByLicense.get(license.id) || [])),
+    businesses: normalizedBusinesses,
+    paymentSessions: paymentSessions || []
   });
 }
 
