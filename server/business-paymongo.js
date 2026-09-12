@@ -5,7 +5,7 @@ const {
   getBusinessAuth,
   readJson,
   sendJson
-} = require('../_business-utils');
+} = require('./_business-utils');
 
 module.exports = async function handler(request, response) {
   const supabase = createClientFromEnv();

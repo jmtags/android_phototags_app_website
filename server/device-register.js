@@ -5,7 +5,7 @@ const {
   readRequestBody,
   sendJson,
   validateDeviceId
-} = require('../_license-utils');
+} = require('./_license-utils');
 
 module.exports = async function handler(request, response) {
   if (request.method !== 'POST') {

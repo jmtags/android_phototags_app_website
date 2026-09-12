@@ -1,6 +1,50 @@
 {
   "rewrites": [
     {
+      "source": "/api/device/register",
+      "destination": "/api/device?route=register"
+    },
+    {
+      "source": "/api/device/pair",
+      "destination": "/api/device?route=pair"
+    },
+    {
+      "source": "/api/license/activate",
+      "destination": "/api/license?route=activate"
+    },
+    {
+      "source": "/api/license/check",
+      "destination": "/api/license?route=check"
+    },
+    {
+      "source": "/api/business/auth",
+      "destination": "/api/business?route=auth"
+    },
+    {
+      "source": "/api/business/dashboard",
+      "destination": "/api/business?route=dashboard"
+    },
+    {
+      "source": "/api/business/paymongo",
+      "destination": "/api/business?route=paymongo"
+    },
+    {
+      "source": "/api/business/pairing-code",
+      "destination": "/api/business?route=pairing-code"
+    },
+    {
+      "source": "/api/payments/create",
+      "destination": "/api/payments?route=create"
+    },
+    {
+      "source": "/api/payments/status",
+      "destination": "/api/payments?route=status"
+    },
+    {
+      "source": "/api/paymongo/webhook",
+      "destination": "/api/paymongo?route=webhook"
+    },
+    {
       "source": "/api/download/:code",
       "destination": "/api/download?code=:code"
     },

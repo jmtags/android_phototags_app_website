@@ -8,7 +8,7 @@ const {
   sendJson,
   validateDeviceId,
   validatePaymentInput
-} = require('../_business-utils');
+} = require('./_business-utils');
 
 function safeMetadata(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {

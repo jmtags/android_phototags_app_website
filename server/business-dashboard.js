@@ -2,7 +2,7 @@ const {
   createClientFromEnv,
   getBusinessAuth,
   sendJson
-} = require('../_business-utils');
+} = require('./_business-utils');
 
 function normalizeBusiness(row) {
   return {

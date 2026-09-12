@@ -3,7 +3,7 @@ const {
   createClientFromEnv,
   readJson,
   sendJson
-} = require('../_business-utils');
+} = require('./_business-utils');
 
 function verifyWebhook(request, rawBody) {
   const secret = process.env.PAYMONGO_WEBHOOK_SECRET;

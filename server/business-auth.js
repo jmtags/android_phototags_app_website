@@ -11,7 +11,7 @@ const {
   readJson,
   sendJson,
   verifyPassword
-} = require('../_business-utils');
+} = require('./_business-utils');
 
 function publicBusiness(business) {
   return {
