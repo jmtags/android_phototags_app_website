@@ -57,7 +57,7 @@ const LICENSE_FORM_INITIAL = {
   expiresAt: ''
 };
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
-const LICENSE_PLAN_OPTIONS = ['pro_lifetime', 'pro_plus', 'business'];
+const LICENSE_PLAN_OPTIONS = ['starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
 const appVersions = [
   {
     versionName: '0.2.18',
@@ -223,12 +223,13 @@ function App() {
   const isDownloadPage = Boolean(downloadMatch);
   const isPrivacyPage = window.location.pathname === '/privacy-policy';
   const isUsePolicyPage = window.location.pathname === '/use-policy';
+  const isActivationPage = window.location.pathname === '/activate';
 
   useEffect(() => {
-    if (!isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage) {
+    if (!isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage && !isActivationPage) {
       trackAnalyticsEvent('site_visit');
     }
-  }, [isAdminPage, isBusinessPage, isDownloadPage, isPrivacyPage, isUsePolicyPage]);
+  }, [isAdminPage, isBusinessPage, isDownloadPage, isPrivacyPage, isUsePolicyPage, isActivationPage]);
 
   if (isAdminPage) {
     return <AdminPage />;
@@ -248,6 +249,10 @@ function App() {
 
   if (isUsePolicyPage) {
     return <PolicyPage type="use" />;
+  }
+
+  if (isActivationPage) {
+    return <ActivationPage />;
   }
 
   const siteLinks = [
@@ -322,7 +327,7 @@ function App() {
             </a>
           </div>
           <p className="early-access-note">
-            PhotoTags is currently in early access. Pro licensing is being prepared, but no payment is required today.
+            PhotoTags licensing is available through QR Ph checkout for activated devices.
           </p>
           <p className="support-line">
             Works with <strong>Canon PIXMA G1010</strong>
@@ -450,23 +455,21 @@ function App() {
 
       <section className="early-access-section" id="early-access">
         <div className="early-access-copy">
-          <p className="eyebrow">PhotoTags Early Access</p>
-          <h2>Available now while Pro licensing is being prepared.</h2>
+          <p className="eyebrow">PhotoTags Licensing</p>
+          <h2>Activate devices with Starter, Pro, or Business plans.</h2>
           <p>
-            PhotoTags is currently available as an early access download while we continue improving the app.
+            PhotoTags can be activated per Android device through the website checkout flow.
           </p>
           <p>
-            A future update will introduce <strong>PhotoTags Pro</strong>, a one-time paid license for commercial and event use.
-            Existing users will be notified clearly before any pricing changes take effect.
+            Payments are handled by PayMongo Checkout using QR Ph, and license activation happens only after the payment webhook confirms the transaction.
           </p>
           <p>
-            Current early access users can continue using the app while we prepare licensing and activation.
-            No payment is required today.
+            Manual license keys remain available from the admin dashboard for special cases.
           </p>
         </div>
 
         <div className="early-access-list">
-          <h3>Planned PhotoTags Pro includes:</h3>
+          <h3>Paid activation includes:</h3>
           <div>
             <BadgeCheck /><span>License activation per device</span>
           </div>
@@ -481,7 +484,7 @@ function App() {
           </div>
           <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
-            Download Early Access APK
+            Download APK
           </a>
         </div>
       </section>
@@ -869,6 +872,238 @@ function formatMoney(amount, currency = 'PHP') {
     style: 'currency',
     currency
   }).format(Number(amount || 0) / 100);
+}
+
+function ActivationPage() {
+  const params = new URLSearchParams(window.location.search);
+  const [deviceId, setDeviceId] = useState(params.get('device_id') || '');
+  const [paymentSessionId, setPaymentSessionId] = useState(params.get('payment_id') || '');
+  const [plans, setPlans] = useState([]);
+  const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
+  const [message, setMessage] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPlans() {
+      try {
+        const response = await fetch('/api/license/plans', { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.status || 'plans_unavailable');
+        }
+
+        if (isMounted) {
+          setPlans(payload.plans || []);
+          setSelectedPlan((payload.plans || []).some((plan) => plan.id === 'pro') ? 'pro' : payload.plans?.[0]?.id || '');
+          setStatus(paymentSessionId ? 'checking' : 'ready');
+        }
+      } catch {
+        if (isMounted) {
+          setStatus('error');
+          setMessage('Plans are unavailable right now. Please try again shortly.');
+        }
+      }
+    }
+
+    loadPlans();
+    return () => {
+      isMounted = false;
+    };
+  }, [paymentSessionId]);
+
+  useEffect(() => {
+    if (!paymentSessionId || !deviceId) {
+      return undefined;
+    }
+
+    let attempts = 0;
+    let stopped = false;
+
+    async function pollPayment() {
+      attempts += 1;
+      try {
+        const response = await fetch('/api/license/payment-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, paymentSessionId })
+        });
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.status || 'status_unavailable');
+        }
+
+        if (stopped) return;
+
+        setPaymentStatus(payload.status);
+        if (payload.status === 'paid') {
+          setStatus('paid');
+          setMessage('Payment confirmed. Your PhotoTags license is active on this device.');
+          return;
+        }
+
+        if (['failed', 'expired', 'cancelled'].includes(payload.status)) {
+          setStatus('ready');
+          setMessage(`Payment ${payload.status}. You can choose a plan and try again.`);
+          return;
+        }
+
+        if (attempts < 20) {
+          window.setTimeout(pollPayment, 3000);
+        } else {
+          setStatus('ready');
+          setMessage('Payment is still pending. Keep this page open or return to the app and check again.');
+        }
+      } catch {
+        if (!stopped) {
+          setStatus('ready');
+          setMessage('Could not check the payment yet. Please try again in a moment.');
+        }
+      }
+    }
+
+    pollPayment();
+    return () => {
+      stopped = true;
+    };
+  }, [deviceId, paymentSessionId]);
+
+  const startCheckout = async (event) => {
+    event.preventDefault();
+    setStatus('creating');
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/license/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceId,
+          planId: selectedPlan,
+          customerEmail
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok || !payload.checkoutUrl) {
+        throw new Error(payload.status || 'checkout_failed');
+      }
+
+      window.location.href = payload.checkoutUrl;
+    } catch {
+      setStatus('ready');
+      setMessage('Checkout could not be created. Please check the device ID and try again.');
+    }
+  };
+
+  const selected = plans.find((plan) => plan.id === selectedPlan);
+  const canSubmit = status !== 'creating' && deviceId.trim().length >= 3 && selectedPlan;
+
+  return (
+    <main className="activation-shell">
+      <header className="activation-header">
+        <a className="brand" href="/" aria-label="PhotoTags home">
+          <img src="/assets/logo-dark.png" alt="" />
+          <span>PhotoTags</span>
+        </a>
+        <a className="ghost-link" href="/">Back to website</a>
+      </header>
+
+      <section className="activation-hero">
+        <div>
+          <p className="eyebrow">License activation</p>
+          <h1>Activate PhotoTags for this Android device.</h1>
+          <p>
+            Choose a plan, pay through PayMongo QR Ph checkout, and the app unlocks after the payment webhook confirms it.
+          </p>
+        </div>
+        <ShieldCheck aria-hidden="true" />
+      </section>
+
+      <form className="activation-panel" onSubmit={startCheckout}>
+        <div className="activation-device-row">
+          <label>
+            Device ID
+            <input
+              required
+              minLength={3}
+              maxLength={200}
+              value={deviceId}
+              onChange={(event) => setDeviceId(event.target.value)}
+              placeholder="PT-ABC123"
+            />
+          </label>
+          <label>
+            Email receipt
+            <input
+              type="email"
+              value={customerEmail}
+              onChange={(event) => setCustomerEmail(event.target.value)}
+              placeholder="client@example.com"
+            />
+          </label>
+        </div>
+
+        <div className="activation-plans">
+          {plans.map((plan) => (
+            <button
+              className={selectedPlan === plan.id ? 'activation-plan activation-plan-selected' : 'activation-plan'}
+              key={plan.id}
+              type="button"
+              onClick={() => setSelectedPlan(plan.id)}
+            >
+              <span>{plan.name}</span>
+              <strong>{formatMoney(plan.amount, plan.currency)}</strong>
+              <small>{plan.durationDays} days - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</small>
+              <p>{plan.description}</p>
+            </button>
+          ))}
+        </div>
+
+        {selected ? (
+          <div className="activation-plan-details">
+            {selected.features.map((feature) => (
+              <span key={feature}><BadgeCheck size={17} /> {feature}</span>
+            ))}
+          </div>
+        ) : null}
+
+        {message ? (
+          <p className={`activation-message activation-message-${status}`}>
+            {status === 'checking' || paymentStatus === 'pending' ? <Loader2 size={18} className="spin" /> : null}
+            {message}
+          </p>
+        ) : null}
+
+        {paymentSessionId && status === 'checking' ? (
+          <p className="activation-message activation-message-checking">
+            <Loader2 size={18} className="spin" />
+            Waiting for PayMongo payment confirmation...
+          </p>
+        ) : null}
+
+        {status === 'paid' ? (
+          <div className="activation-complete">
+            <BadgeCheck aria-hidden="true" />
+            <div>
+              <strong>License active</strong>
+              <span>Return to PhotoTags and tap Check License. The app can also poll `/api/license/check` automatically.</span>
+            </div>
+          </div>
+        ) : (
+          <button className="primary-button activation-submit" type="submit" disabled={!canSubmit}>
+            {status === 'creating' ? <Loader2 size={19} className="spin" /> : <KeyRound size={19} />}
+            {status === 'creating' ? 'Creating checkout' : 'Pay with QR Ph'}
+          </button>
+        )}
+      </form>
+    </main>
+  );
 }
 
 function BusinessPage() {
@@ -1267,6 +1502,7 @@ function AdminPage() {
     businesses: [],
     paymentSessions: []
   });
+  const [licensePlans, setLicensePlans] = useState([]);
   const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
   const [activeAdminSection, setActiveAdminSection] = useState('overview');
 
@@ -1398,6 +1634,40 @@ function AdminPage() {
   useEffect(() => {
     refreshLicenses();
   }, [isAuthed, adminPassword]);
+
+  useEffect(() => {
+    if (!isAuthed) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadLicensePlans() {
+      try {
+        const response = await fetch('/api/license/plans', {
+          headers: { Accept: 'application/json' }
+        });
+        const payload = await response.json();
+
+        if (!response.ok || !payload.ok) {
+          throw new Error('Plans request failed');
+        }
+
+        if (isMounted) {
+          setLicensePlans(payload.plans || []);
+        }
+      } catch {
+        if (isMounted) {
+          setLicensePlans([]);
+        }
+      }
+    }
+
+    loadLicensePlans();
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthed]);
 
   const updateCommentStatus = async (id, status) => {
     setCommentStatus('loading');
@@ -1619,6 +1889,7 @@ function AdminPage() {
           data={licenseData}
           form={licenseForm}
           message={licenseMessage}
+          plans={licensePlans}
           status={licenseStatus}
           onCreate={createLicense}
           onFormChange={setLicenseForm}
@@ -1817,6 +2088,7 @@ function AdminLicensesSection({
   data,
   form,
   message,
+  plans,
   status,
   onCreate,
   onFormChange,
@@ -1859,6 +2131,26 @@ function AdminLicensesSection({
             <strong>{value}</strong>
           </div>
         ))}
+      </div>
+
+      <div className="admin-plan-price-grid">
+        {plans.length ? plans.map((plan) => (
+          <article className="admin-plan-price-card" key={plan.id}>
+            <div>
+              <span>{plan.name}</span>
+              <strong>{formatMoney(plan.amount, plan.currency)}</strong>
+            </div>
+            <p>{plan.durationDays} days - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</p>
+          </article>
+        )) : (
+          <article className="admin-plan-price-card">
+            <div>
+              <span>Package prices</span>
+              <strong>Unavailable</strong>
+            </div>
+            <p>Plan pricing could not be loaded.</p>
+          </article>
+        )}
       </div>
 
       <form className="license-create-form" onSubmit={onCreate}>

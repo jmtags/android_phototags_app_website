@@ -46,6 +46,38 @@ Successful activation binds the license to the device. The default rule is one d
 
 `licenseKey` is optional. When omitted, the server checks any active license already bound to the device.
 
+## PayMongo QR Ph Activation
+
+The automatic paid flow is:
+
+```text
+PhotoTags APK -> /activate page -> PayMongo Checkout -> /api/paymongo/webhook -> license bound to device
+```
+
+From Android, open the website activation page in a browser or Custom Tab:
+
+```text
+https://your-domain.com/activate?device_id=android-device-id-or-install-id
+```
+
+The website handles plan selection and PayMongo Checkout. The Android app does not need the PayMongo secret key and should not call PayMongo directly.
+
+After the user pays, the app should poll `POST /api/license/check` with the same `deviceId`. When `licensed` is `true`, unlock the app.
+
+Suggested polling after returning from browser:
+
+- poll every 3-5 seconds
+- stop after 60-90 seconds
+- show a manual "Check License" button if still pending
+
+Available website checkout endpoints:
+
+- `GET /api/license/plans`
+- `POST /api/license/create-checkout`
+- `POST /api/license/payment-status`
+
+The APK usually only needs `/activate` and `/api/license/check`.
+
 ## Create A License
 
 Run this in Supabase SQL after applying the migration:

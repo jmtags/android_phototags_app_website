@@ -17,6 +17,18 @@
       "destination": "/api/license?route=check"
     },
     {
+      "source": "/api/license/plans",
+      "destination": "/api/license?route=plans"
+    },
+    {
+      "source": "/api/license/create-checkout",
+      "destination": "/api/license?route=create-checkout"
+    },
+    {
+      "source": "/api/license/payment-status",
+      "destination": "/api/license?route=payment-status"
+    },
+    {
       "source": "/api/business/auth",
       "destination": "/api/business?route=auth"
     },

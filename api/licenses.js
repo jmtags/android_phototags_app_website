@@ -2,7 +2,7 @@ const { randomBytes } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const LICENSE_STATUSES = new Set(['active', 'revoked', 'refunded', 'expired']);
-const LICENSE_PLANS = new Set(['pro_lifetime', 'pro_plus', 'business']);
+const LICENSE_PLANS = new Set(['starter', 'pro', 'business', 'pro_lifetime', 'pro_plus']);
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
