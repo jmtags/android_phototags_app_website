@@ -40,6 +40,22 @@ async function paymongoV2Request(secretKey, path, options = {}) {
   return payload;
 }
 
+function getPaymongoErrorSummary(payload) {
+  const errors = Array.isArray(payload?.errors) ? payload.errors : [];
+
+  if (!errors.length) {
+    return null;
+  }
+
+  return errors
+    .slice(0, 3)
+    .map((error) => ({
+      code: cleanText(error.code, 80) || null,
+      detail: cleanText(error.detail, 240) || null,
+      source: cleanText(error.source?.pointer || error.source?.attribute, 120) || null
+    }));
+}
+
 function normalizePlan(plan) {
   return {
     id: plan.id,
@@ -280,7 +296,12 @@ async function createCheckout(request, response) {
       .from('license_payment_sessions')
       .update({ status: 'failed', payment_payload: error.payload || { message: error.message } })
       .eq('id', session.id);
-    sendJson(response, 502, { ok: false, status: 'paymongo_create_failed' });
+    sendJson(response, 502, {
+      ok: false,
+      status: 'paymongo_create_failed',
+      providerStatusCode: error.statusCode || null,
+      providerErrors: getPaymongoErrorSummary(error.payload)
+    });
     return;
   }
 

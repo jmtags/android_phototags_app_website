@@ -991,13 +991,14 @@ function ActivationPage() {
       const payload = await response.json();
 
       if (!response.ok || !payload.ok || !payload.checkoutUrl) {
-        throw new Error(payload.status || 'checkout_failed');
+        const providerDetail = payload.providerErrors?.map((error) => error.detail || error.code).filter(Boolean).join(' ');
+        throw new Error(providerDetail || payload.status || 'checkout_failed');
       }
 
       window.location.href = payload.checkoutUrl;
-    } catch {
+    } catch (error) {
       setStatus('ready');
-      setMessage('Checkout could not be created. Please check the device ID and try again.');
+      setMessage(`Checkout could not be created. ${error.message || 'Please try again.'}`);
     }
   };
 
