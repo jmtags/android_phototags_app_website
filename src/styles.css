@@ -2175,6 +2175,54 @@ button:disabled {
   color: #00d887;
 }
 
+.activation-agreement {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.activation-agreement > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffffff;
+}
+
+.activation-agreement > div svg {
+  color: #00d887;
+}
+
+.activation-agreement p {
+  margin: 0;
+  color: rgba(244, 248, 255, 0.72);
+  line-height: 1.55;
+}
+
+.activation-agreement label {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  color: rgba(244, 248, 255, 0.9);
+  font-weight: 720;
+  line-height: 1.45;
+}
+
+.activation-agreement input {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+
+.activation-agreement a {
+  color: #00d887;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .activation-message,
 .activation-complete {
   display: flex;

@@ -881,6 +881,7 @@ function ActivationPage() {
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('monthly');
   const [customerEmail, setCustomerEmail] = useState('');
+  const [acceptedAgreement, setAcceptedAgreement] = useState(false);
   const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
   const [message, setMessage] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
@@ -1059,7 +1060,8 @@ function ActivationPage() {
         body: JSON.stringify({
           deviceId,
           planId: selectedPlan,
-          customerEmail
+          customerEmail,
+          acceptedAgreement
         })
       });
       const payload = await response.json();
@@ -1077,7 +1079,7 @@ function ActivationPage() {
   };
 
   const selected = plans.find((plan) => plan.id === selectedPlan);
-  const canSubmit = status !== 'creating' && deviceId.trim().length >= 3 && selectedPlan;
+  const canSubmit = status !== 'creating' && deviceId.trim().length >= 3 && selectedPlan && acceptedAgreement;
   const appReturnUrl = `phototags://license/activated?device_id=${encodeURIComponent(deviceId)}${paymentSessionId ? `&payment_id=${encodeURIComponent(paymentSessionId)}` : ''}`;
 
   useEffect(() => {
@@ -1161,6 +1163,32 @@ function ActivationPage() {
           </div>
         ) : null}
 
+        <section className="activation-agreement" aria-label="Payment agreement">
+          <div>
+            <ShieldCheck aria-hidden="true" />
+            <strong>Before payment</strong>
+          </div>
+          <p>
+            PhotoTags licenses are digital products. Once payment is confirmed and the license is activated for this device ID,
+            the purchase is generally final and non-refundable except where required by law or due to a verified PhotoTags system error.
+          </p>
+          <p>
+            Please confirm the device ID shown above is correct. The license will be bound to that device for activation checks.
+          </p>
+          <label>
+            <input
+              checked={acceptedAgreement}
+              required
+              type="checkbox"
+              onChange={(event) => setAcceptedAgreement(event.target.checked)}
+            />
+            <span>
+              I agree to the <a href="/use-policy" target="_blank" rel="noreferrer">Use Policy</a>,
+              {' '}<a href="/privacy-policy" target="_blank" rel="noreferrer">Privacy Policy</a>, license conditions, and refund terms.
+            </span>
+          </label>
+        </section>
+
         {message ? (
           <p className={`activation-message activation-message-${status}`}>
             {status === 'checking' || paymentStatus === 'pending' ? <Loader2 size={18} className="spin" /> : null}
@@ -1189,7 +1217,7 @@ function ActivationPage() {
         ) : (
           <button className="primary-button activation-submit" type="submit" disabled={!canSubmit}>
             {status === 'creating' ? <Loader2 size={19} className="spin" /> : <KeyRound size={19} />}
-            {status === 'creating' ? 'Creating checkout' : 'Pay with QR Ph'}
+            {status === 'creating' ? 'Creating checkout' : 'Continue to Payment'}
           </button>
         )}
       </form>

@@ -9,6 +9,12 @@ const {
 } = require('./_business-utils');
 const { getLicensePlan, getLicensePlans } = require('./license-plans');
 
+const AGREEMENT_VERSIONS = {
+  terms: 'phototags-terms-2026-09-17',
+  privacy: 'phototags-privacy-2026-09-17',
+  refund: 'phototags-refund-2026-09-17'
+};
+
 function getSiteUrl(request) {
   return (process.env.SITE_URL || `https://${request.headers.host}`).replace(/\/$/, '');
 }
@@ -16,6 +22,14 @@ function getSiteUrl(request) {
 function normalizeEmail(value) {
   const email = cleanText(value, 254).toLowerCase();
   return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function getClientIp(request) {
+  const forwarded = request.headers['x-forwarded-for'];
+  return (Array.isArray(forwarded) ? forwarded[0] : String(forwarded || request.socket?.remoteAddress || ''))
+    .split(',')[0]
+    .trim()
+    .slice(0, 120);
 }
 
 async function paymongoV2Request(secretKey, path, options = {}) {
@@ -349,6 +363,7 @@ async function createCheckout(request, response) {
   const deviceId = cleanText(body.deviceId || body.device_id, 200);
   const planId = cleanText(body.planId || body.plan_id, 40).toLowerCase();
   const customerEmail = normalizeEmail(body.customerEmail || body.customer_email);
+  const acceptedAgreement = body.acceptedAgreement === true || body.accepted_agreement === true;
   const plan = await getLicensePlan(planId, supabase);
 
   if (!validateDeviceId(deviceId)) {
@@ -361,8 +376,14 @@ async function createCheckout(request, response) {
     return;
   }
 
+  if (!acceptedAgreement) {
+    sendJson(response, 400, { ok: false, status: 'agreement_required' });
+    return;
+  }
+
   const referenceNumber = `PT-${plan.id.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
   const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const agreementAcceptedAt = new Date().toISOString();
 
   await supabase
     .from('devices')
@@ -382,7 +403,13 @@ async function createCheckout(request, response) {
       status: 'pending',
       reference_number: referenceNumber,
       customer_email: customerEmail,
-      expires_at: expiresAt
+      expires_at: expiresAt,
+      agreement_accepted_at: agreementAcceptedAt,
+      agreement_terms_version: AGREEMENT_VERSIONS.terms,
+      agreement_privacy_version: AGREEMENT_VERSIONS.privacy,
+      agreement_refund_version: AGREEMENT_VERSIONS.refund,
+      agreement_ip: getClientIp(request),
+      agreement_user_agent: cleanText(request.headers['user-agent'], 500)
     })
     .select('id, reference_number')
     .single();
@@ -418,7 +445,10 @@ async function createCheckout(request, response) {
               payment_session_id: session.id,
               device_id: deviceId,
               plan: plan.id,
-              customer_email: customerEmail || ''
+              customer_email: customerEmail || '',
+              terms_version: AGREEMENT_VERSIONS.terms,
+              privacy_version: AGREEMENT_VERSIONS.privacy,
+              refund_version: AGREEMENT_VERSIONS.refund
             }
           }
         }
@@ -472,6 +502,7 @@ async function createCheckout(request, response) {
     referenceNumber: session.reference_number,
     checkoutUrl,
     expiresAt,
+    agreementAcceptedAt,
     plan: normalizePlan(plan)
   });
 }
