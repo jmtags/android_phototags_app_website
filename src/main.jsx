@@ -1023,6 +1023,19 @@ function ActivationPage() {
 
   const selected = plans.find((plan) => plan.id === selectedPlan);
   const canSubmit = status !== 'creating' && deviceId.trim().length >= 3 && selectedPlan;
+  const appReturnUrl = `phototags://license/activated?device_id=${encodeURIComponent(deviceId)}${paymentSessionId ? `&payment_id=${encodeURIComponent(paymentSessionId)}` : ''}`;
+
+  useEffect(() => {
+    if (status !== 'paid') {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      window.location.href = appReturnUrl;
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [appReturnUrl, status]);
 
   return (
     <main className="activation-shell">
@@ -1112,7 +1125,10 @@ function ActivationPage() {
             <BadgeCheck aria-hidden="true" />
             <div>
               <strong>License active</strong>
-              <span>Return to PhotoTags and tap Check License.</span>
+              <span>Opening PhotoTags. If it does not open, use the button below.</span>
+              <a className="outline-button activation-open-app" href={appReturnUrl}>
+                Open PhotoTags
+              </a>
             </div>
           </div>
         ) : (

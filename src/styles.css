@@ -2211,6 +2211,12 @@ button:disabled {
   color: rgba(244, 248, 255, 0.72);
 }
 
+.activation-open-app {
+  width: fit-content;
+  min-height: 46px;
+  margin-top: 8px;
+}
+
 .activation-submit {
   width: fit-content;
 }
