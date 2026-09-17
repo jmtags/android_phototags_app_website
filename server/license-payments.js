@@ -489,6 +489,7 @@ async function checkStatus(request, response) {
   }
 
   const supabase = createClientFromEnv();
+  const secretKey = process.env.PAYMONGO_SECRET_KEY;
   if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
     return;
