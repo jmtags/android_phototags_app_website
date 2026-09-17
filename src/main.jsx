@@ -884,6 +884,7 @@ function ActivationPage() {
   const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
   const [message, setMessage] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
+  const paidStorageKey = paymentSessionId ? `phototags.activation.paid.${paymentSessionId}` : '';
   const toastText = useMemo(() => {
     if (status === 'creating') {
       return 'Preparing secure PayMongo checkout...';
@@ -904,6 +905,44 @@ function ActivationPage() {
     return '';
   }, [message, paymentStatus, status]);
 
+  const markPaymentPaid = () => {
+    if (paidStorageKey) {
+      sessionStorage.setItem(paidStorageKey, 'true');
+    }
+
+    setPaymentStatus('paid');
+    setStatus('paid');
+    setMessage('Payment confirmed. Your PhotoTags license is active on this device.');
+  };
+
+  const checkPaymentStatus = async () => {
+    const response = await fetch('/api/license/payment-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId, paymentSessionId })
+    });
+    const payload = await response.json();
+
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.status || 'status_unavailable');
+    }
+
+    setPaymentStatus(payload.status);
+
+    if (payload.status === 'paid') {
+      markPaymentPaid();
+      return payload.status;
+    }
+
+    if (['failed', 'expired', 'cancelled'].includes(payload.status)) {
+      setStatus('ready');
+      setMessage(`Payment ${payload.status}. You can choose a plan and try again.`);
+      return payload.status;
+    }
+
+    return payload.status;
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -919,7 +958,11 @@ function ActivationPage() {
         if (isMounted) {
           setPlans(payload.plans || []);
           setSelectedPlan((payload.plans || []).some((plan) => plan.id === 'monthly') ? 'monthly' : payload.plans?.[0]?.id || '');
-          setStatus(paymentSessionId ? 'checking' : 'ready');
+          if (paidStorageKey && sessionStorage.getItem(paidStorageKey) === 'true') {
+            markPaymentPaid();
+          } else {
+            setStatus(paymentSessionId ? 'checking' : 'ready');
+          }
         }
       } catch {
         if (isMounted) {
@@ -933,10 +976,15 @@ function ActivationPage() {
     return () => {
       isMounted = false;
     };
-  }, [paymentSessionId]);
+  }, [paidStorageKey, paymentSessionId]);
 
   useEffect(() => {
     if (!paymentSessionId || !deviceId) {
+      return undefined;
+    }
+
+    if (paidStorageKey && sessionStorage.getItem(paidStorageKey) === 'true') {
+      markPaymentPaid();
       return undefined;
     }
 
@@ -946,29 +994,12 @@ function ActivationPage() {
     async function pollPayment() {
       attempts += 1;
       try {
-        const response = await fetch('/api/license/payment-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ deviceId, paymentSessionId })
-        });
-        const payload = await response.json();
-
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.status || 'status_unavailable');
-        }
-
         if (stopped) return;
 
-        setPaymentStatus(payload.status);
-        if (payload.status === 'paid') {
-          setStatus('paid');
-          setMessage('Payment confirmed. Your PhotoTags license is active on this device.');
-          return;
-        }
+        const nextStatus = await checkPaymentStatus();
+        if (stopped) return;
 
-        if (['failed', 'expired', 'cancelled'].includes(payload.status)) {
-          setStatus('ready');
-          setMessage(`Payment ${payload.status}. You can choose a plan and try again.`);
+        if (nextStatus === 'paid' || ['failed', 'expired', 'cancelled'].includes(nextStatus)) {
           return;
         }
 
@@ -990,7 +1021,31 @@ function ActivationPage() {
     return () => {
       stopped = true;
     };
-  }, [deviceId, paymentSessionId]);
+  }, [deviceId, paidStorageKey, paymentSessionId]);
+
+  useEffect(() => {
+    if (!paymentSessionId || !deviceId || status === 'paid') {
+      return undefined;
+    }
+
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+
+      checkPaymentStatus().catch(() => {
+        setMessage('Could not check the payment yet. Please try again in a moment.');
+      });
+    };
+
+    window.addEventListener('focus', refreshIfVisible);
+    document.addEventListener('visibilitychange', refreshIfVisible);
+
+    return () => {
+      window.removeEventListener('focus', refreshIfVisible);
+      document.removeEventListener('visibilitychange', refreshIfVisible);
+    };
+  }, [deviceId, paymentSessionId, status]);
 
   const startCheckout = async (event) => {
     event.preventDefault();
