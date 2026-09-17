@@ -40,6 +40,28 @@ async function paymongoV2Request(secretKey, path, options = {}) {
   return payload;
 }
 
+async function paymongoV1Request(secretKey, path, options = {}) {
+  const response = await fetch(`https://api.paymongo.com/v1${path}`, {
+    method: options.method || 'GET',
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error('paymongo_request_failed');
+    error.statusCode = response.status;
+    error.payload = payload;
+    throw error;
+  }
+
+  return payload;
+}
+
 function getPaymongoErrorSummary(payload) {
   const errors = Array.isArray(payload?.errors) ? payload.errors : [];
 
@@ -67,6 +89,117 @@ function normalizePlan(plan) {
     maxDevices: plan.maxDevices,
     features: plan.features
   };
+}
+
+function generateLicenseKey(planId) {
+  const prefix = planId === 'lifetime' ? 'PT-LIFE' : planId === 'weekly' ? 'PT-WEEK' : 'PT-MONTH';
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.randomBytes(16);
+  const chars = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
+  return `${prefix}-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
+}
+
+function addDays(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function isCheckoutPaid(checkoutPayload) {
+  const attributes = checkoutPayload?.data?.attributes || checkoutPayload?.attributes || {};
+  const payments = Array.isArray(attributes.payments) ? attributes.payments : [];
+  const intent = attributes.payment_intent?.attributes || {};
+  const intentPayments = Array.isArray(intent.payments) ? intent.payments : [];
+
+  return intent.status === 'succeeded'
+    || payments.some((payment) => payment?.attributes?.status === 'paid')
+    || intentPayments.some((payment) => payment?.attributes?.status === 'paid');
+}
+
+async function createLicenseWithRetry(supabase, session, plan) {
+  const expiresAt = plan.durationDays ? addDays(plan.durationDays) : null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase
+      .from('licenses')
+      .insert({
+        license_key: generateLicenseKey(plan.id),
+        plan: plan.id,
+        status: 'active',
+        max_devices: plan.maxDevices,
+        expires_at: expiresAt,
+        customer_email: session.customer_email || null,
+        payment_reference: session.reference_number
+      })
+      .select('id, license_key')
+      .single();
+
+    if (!error) {
+      return data;
+    }
+
+    if (error.code !== '23505') {
+      throw error;
+    }
+  }
+
+  throw new Error('license_key_collision');
+}
+
+async function fulfillPaidSession(supabase, session, checkoutPayload) {
+  if (session.status === 'paid' && session.license_id) {
+    return session;
+  }
+
+  const plan = await getLicensePlan(session.plan, supabase);
+  if (!plan || plan.amount !== session.amount || plan.currency !== session.currency) {
+    throw new Error('license_payment_plan_mismatch');
+  }
+
+  await supabase
+    .from('devices')
+    .upsert({
+      device_id: session.device_id,
+      platform: 'android',
+      status: 'licensed',
+      last_seen_at: new Date().toISOString()
+    }, { onConflict: 'device_id' });
+
+  const license = await createLicenseWithRetry(supabase, session, plan);
+
+  await supabase
+    .from('license_activations')
+    .upsert({
+      license_id: license.id,
+      device_id: session.device_id,
+      last_checked_at: new Date().toISOString()
+    }, { onConflict: 'license_id,device_id' });
+
+  await supabase
+    .from('licenses')
+    .update({ activated_at: new Date().toISOString() })
+    .eq('id', license.id);
+
+  await supabase
+    .from('devices')
+    .update({ status: 'licensed', last_seen_at: new Date().toISOString() })
+    .eq('device_id', session.device_id);
+
+  const { data, error } = await supabase
+    .from('license_payment_sessions')
+    .update({
+      status: 'paid',
+      license_id: license.id,
+      paid_at: new Date().toISOString(),
+      payment_payload: checkoutPayload
+    })
+    .eq('id', session.id)
+    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, updated_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }
 
 function isAdmin(request) {
@@ -104,6 +237,7 @@ async function updatePlan(request, response) {
   }
 
   const supabase = createClientFromEnv();
+  const secretKey = process.env.PAYMONGO_SECRET_KEY;
   if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
     return;
@@ -378,7 +512,7 @@ async function checkStatus(request, response) {
 
   const { data: session, error } = await supabase
     .from('license_payment_sessions')
-    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, updated_at')
+    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, paymongo_checkout_session_id, customer_email, updated_at')
     .eq('id', paymentSessionId)
     .eq('device_id', deviceId)
     .maybeSingle();
@@ -388,7 +522,22 @@ async function checkStatus(request, response) {
     return;
   }
 
-  let status = session.status;
+  let currentSession = session;
+  let status = currentSession.status;
+
+  if (status === 'pending' && secretKey && currentSession.paymongo_checkout_session_id) {
+    try {
+      const checkout = await paymongoV1Request(secretKey, `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`);
+
+      if (isCheckoutPaid(checkout)) {
+        currentSession = await fulfillPaidSession(supabase, currentSession, checkout);
+        status = currentSession.status;
+      }
+    } catch (checkoutError) {
+      console.error('PayMongo checkout status fallback failed', checkoutError.payload || checkoutError.message);
+    }
+  }
+
   if (status === 'pending' && session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
     status = 'expired';
     await supabase.from('license_payment_sessions').update({ status }).eq('id', session.id);
@@ -397,14 +546,14 @@ async function checkStatus(request, response) {
   sendJson(response, 200, {
     ok: true,
     status,
-    plan: session.plan,
-    amount: session.amount,
-    currency: session.currency,
-    paidAt: session.paid_at,
-    expiresAt: session.expires_at,
-    licenseId: session.license_id,
-    referenceNumber: session.reference_number,
-    updatedAt: session.updated_at
+    plan: currentSession.plan,
+    amount: currentSession.amount,
+    currency: currentSession.currency,
+    paidAt: currentSession.paid_at,
+    expiresAt: currentSession.expires_at,
+    licenseId: currentSession.license_id,
+    referenceNumber: currentSession.reference_number,
+    updatedAt: currentSession.updated_at
   });
 }
 
