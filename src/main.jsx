@@ -884,6 +884,25 @@ function ActivationPage() {
   const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
   const [message, setMessage] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
+  const toastText = useMemo(() => {
+    if (status === 'creating') {
+      return 'Preparing secure PayMongo checkout...';
+    }
+
+    if (status === 'checking' || paymentStatus === 'pending') {
+      return 'Checking payment confirmation...';
+    }
+
+    if (status === 'paid') {
+      return 'Payment confirmed. License activated.';
+    }
+
+    if (message) {
+      return message;
+    }
+
+    return '';
+  }, [message, paymentStatus, status]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1093,7 +1112,7 @@ function ActivationPage() {
             <BadgeCheck aria-hidden="true" />
             <div>
               <strong>License active</strong>
-              <span>Return to PhotoTags and tap Check License. The app can also poll `/api/license/check` automatically.</span>
+              <span>Return to PhotoTags and tap Check License.</span>
             </div>
           </div>
         ) : (
@@ -1103,6 +1122,19 @@ function ActivationPage() {
           </button>
         )}
       </form>
+
+      {toastText ? (
+        <div className={`activation-toast activation-toast-${status}`} role="status" aria-live="polite">
+          {status === 'creating' || status === 'checking' || paymentStatus === 'pending' ? (
+            <Loader2 size={18} className="spin" />
+          ) : status === 'paid' ? (
+            <BadgeCheck size={18} />
+          ) : (
+            <AlertCircle size={18} />
+          )}
+          <span>{toastText}</span>
+        </div>
+      ) : null}
     </main>
   );
 }
