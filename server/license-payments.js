@@ -53,10 +53,118 @@ function normalizePlan(plan) {
   };
 }
 
+function isAdmin(request) {
+  const expectedPassword = process.env.ADMIN_PASSWORD || 'phototags2026';
+  const receivedPassword = request.headers['x-admin-password'];
+  return typeof receivedPassword === 'string' && receivedPassword === expectedPassword;
+}
+
 async function listPlans(request, response) {
+  if (request.method !== 'GET') {
+    response.setHeader('Allow', 'GET, PATCH');
+    sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
+    return;
+  }
+
+  const supabase = createClientFromEnv();
+  const plans = await getLicensePlans(supabase, { includeInactive: isAdmin(request) });
+
   sendJson(response, 200, {
     ok: true,
-    plans: getLicensePlans().map(normalizePlan)
+    plans: plans.map(normalizePlan)
+  });
+}
+
+async function updatePlan(request, response) {
+  if (request.method !== 'PATCH') {
+    response.setHeader('Allow', 'GET, PATCH');
+    sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
+    return;
+  }
+
+  if (!isAdmin(request)) {
+    sendJson(response, 401, { ok: false, status: 'unauthorized' });
+    return;
+  }
+
+  const supabase = createClientFromEnv();
+  if (!supabase) {
+    sendJson(response, 500, { ok: false, status: 'server_not_configured' });
+    return;
+  }
+
+  let body;
+  try {
+    body = await readJson(request);
+  } catch {
+    sendJson(response, 400, { ok: false, status: 'invalid_json' });
+    return;
+  }
+
+  const planId = cleanText(body.planId || body.plan_id || body.id, 40).toLowerCase();
+  const updates = {};
+
+  if (!/^[a-z0-9_-]{3,40}$/.test(planId)) {
+    sendJson(response, 400, { ok: false, status: 'invalid_plan' });
+    return;
+  }
+
+  if (body.amount !== undefined) {
+    const amount = Number(body.amount);
+    if (!Number.isInteger(amount) || amount < 100 || amount > 10000000) {
+      sendJson(response, 400, { ok: false, status: 'invalid_amount' });
+      return;
+    }
+    updates.amount = amount;
+  }
+
+  if (body.durationDays !== undefined || body.duration_days !== undefined) {
+    const rawDuration = body.durationDays ?? body.duration_days;
+    const durationDays = rawDuration === null || rawDuration === '' ? null : Number(rawDuration);
+    if (durationDays !== null && (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 36500)) {
+      sendJson(response, 400, { ok: false, status: 'invalid_duration' });
+      return;
+    }
+    updates.duration_days = durationDays;
+  }
+
+  if (body.maxDevices !== undefined || body.max_devices !== undefined) {
+    const maxDevices = Number(body.maxDevices ?? body.max_devices);
+    if (!Number.isInteger(maxDevices) || maxDevices < 1 || maxDevices > 1000) {
+      sendJson(response, 400, { ok: false, status: 'invalid_max_devices' });
+      return;
+    }
+    updates.max_devices = maxDevices;
+  }
+
+  if (body.active !== undefined) {
+    updates.active = Boolean(body.active);
+  }
+
+  if (!Object.keys(updates).length) {
+    sendJson(response, 400, { ok: false, status: 'empty_update' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('license_plan_settings')
+    .update(updates)
+    .eq('id', planId)
+    .select('id, name, description, amount, currency, duration_days, max_devices, features, active, sort_order')
+    .maybeSingle();
+
+  if (error || !data) {
+    sendJson(response, error?.code === '42P01' ? 500 : 404, {
+      ok: false,
+      status: error?.code === '42P01' ? 'plan_settings_not_deployed' : 'plan_not_found'
+    });
+    return;
+  }
+
+  sendJson(response, 200, {
+    ok: true,
+    status: 'updated',
+    plan: normalizePlan(data)
   });
 }
 
@@ -91,7 +199,7 @@ async function createCheckout(request, response) {
   const deviceId = cleanText(body.deviceId || body.device_id, 200);
   const planId = cleanText(body.planId || body.plan_id, 40).toLowerCase();
   const customerEmail = normalizeEmail(body.customerEmail || body.customer_email);
-  const plan = getLicensePlan(planId);
+  const plan = await getLicensePlan(planId, supabase);
 
   if (!validateDeviceId(deviceId)) {
     sendJson(response, 400, { ok: false, status: 'invalid_device_id' });
@@ -282,5 +390,6 @@ async function checkStatus(request, response) {
 module.exports = {
   checkStatus,
   createCheckout,
-  listPlans
+  listPlans,
+  updatePlan
 };

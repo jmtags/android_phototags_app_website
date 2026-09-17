@@ -78,6 +78,22 @@ Available website checkout endpoints:
 
 The APK usually only needs `/activate` and `/api/license/check`.
 
+Current launch pricing is served by `GET /api/license/plans`:
+
+- Weekly: PHP 150
+- Monthly: PHP 300
+- Lifetime: PHP 1,000
+
+Backend pricing changes are stored in Supabase table `public.license_plan_settings`. You can edit price, duration, device count, and active status from the admin Licenses page. You can also update `amount` in centavos, `duration_days`, `max_devices`, `features`, or `active` directly in Supabase; the checkout page and admin package cards will read the updated values.
+
+Example price update:
+
+```sql
+update public.license_plan_settings
+set amount = 35000
+where id = 'monthly';
+```
+
 ## Create A License
 
 Run this in Supabase SQL after applying the migration:
@@ -89,7 +105,7 @@ values ('PT-PRO-CHANGE-ME', 'customer@example.com', 'manual');
 
 Defaults:
 
-- `plan`: `pro_lifetime`
+- `plan`: `monthly`
 - `status`: `active`
 - `max_devices`: `1`
 - `expires_at`: `null`

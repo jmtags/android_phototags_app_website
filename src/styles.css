@@ -1457,7 +1457,7 @@ button:disabled {
   background: rgba(0, 199, 119, 0.08);
 }
 
-.admin-plan-price-card div {
+.admin-plan-price-card > div:first-child {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1481,6 +1481,47 @@ button:disabled {
   margin: 0;
   color: rgba(244, 248, 255, 0.72);
   font-weight: 720;
+}
+
+.admin-plan-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.admin-plan-controls label {
+  display: grid;
+  gap: 7px;
+  color: rgba(244, 248, 255, 0.68);
+  font-size: 0.86rem;
+  font-weight: 760;
+}
+
+.admin-plan-controls input {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font: inherit;
+}
+
+.admin-plan-controls .outline-button {
+  grid-column: 1 / -1;
+  min-height: 44px;
+}
+
+.admin-plan-active {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+}
+
+.admin-plan-active input {
+  width: 18px;
+  min-height: 18px;
 }
 
 .license-create-form {

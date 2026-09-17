@@ -51,13 +51,13 @@ const LICENSE_FORM_INITIAL = {
   licenseKey: '',
   customerEmail: '',
   paymentReference: '',
-  plan: 'pro_lifetime',
+  plan: 'monthly',
   status: 'active',
   maxDevices: 1,
   expiresAt: ''
 };
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
-const LICENSE_PLAN_OPTIONS = ['starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
+const LICENSE_PLAN_OPTIONS = ['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
 const appVersions = [
   {
     versionName: '0.2.18',
@@ -456,31 +456,31 @@ function App() {
       <section className="early-access-section" id="early-access">
         <div className="early-access-copy">
           <p className="eyebrow">PhotoTags Licensing</p>
-          <h2>Activate devices with Starter, Pro, or Business plans.</h2>
+          <h2>Launch pricing is open for Weekly, Monthly, and Lifetime access.</h2>
           <p>
-            PhotoTags can be activated per Android device through the website checkout flow.
+            Pick the license that fits your event schedule and activate PhotoTags for your Android device in a few taps.
           </p>
           <p>
-            Payments are handled by PayMongo Checkout using QR Ph, and license activation happens only after the payment webhook confirms the transaction.
+            Payments run through PayMongo Checkout with QR Ph support. Once payment is confirmed, PhotoTags unlocks automatically on the selected device.
           </p>
           <p>
-            Manual license keys remain available from the admin dashboard for special cases.
+            Package prices can be updated from the backend whenever launch pricing changes.
           </p>
         </div>
 
         <div className="early-access-list">
-          <h3>Paid activation includes:</h3>
+          <h3>Launch packages:</h3>
           <div>
-            <BadgeCheck /><span>License activation per device</span>
+            <BadgeCheck /><span>Weekly access for ₱150</span>
           </div>
           <div>
-            <RefreshCw /><span>Continued app updates</span>
+            <RefreshCw /><span>Monthly access for ₱300</span>
           </div>
           <div>
-            <Camera /><span>Photobooth and ID photo tools</span>
+            <Camera /><span>Lifetime access for ₱1,000</span>
           </div>
           <div>
-            <ImageIcon /><span>Branding, templates, stickers, QR downloads, saved gallery, supported printers, cameras, and reprint features</span>
+            <ImageIcon /><span>Photobooth, ID photo, templates, stickers, QR downloads, gallery, printer, camera, and reprint tools</span>
           </div>
           <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
@@ -879,7 +879,7 @@ function ActivationPage() {
   const [deviceId, setDeviceId] = useState(params.get('device_id') || '');
   const [paymentSessionId, setPaymentSessionId] = useState(params.get('payment_id') || '');
   const [plans, setPlans] = useState([]);
-  const [selectedPlan, setSelectedPlan] = useState('pro');
+  const [selectedPlan, setSelectedPlan] = useState('monthly');
   const [customerEmail, setCustomerEmail] = useState('');
   const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
   const [message, setMessage] = useState('');
@@ -899,7 +899,7 @@ function ActivationPage() {
 
         if (isMounted) {
           setPlans(payload.plans || []);
-          setSelectedPlan((payload.plans || []).some((plan) => plan.id === 'pro') ? 'pro' : payload.plans?.[0]?.id || '');
+          setSelectedPlan((payload.plans || []).some((plan) => plan.id === 'monthly') ? 'monthly' : payload.plans?.[0]?.id || '');
           setStatus(paymentSessionId ? 'checking' : 'ready');
         }
       } catch {
@@ -1059,7 +1059,7 @@ function ActivationPage() {
             >
               <span>{plan.name}</span>
               <strong>{formatMoney(plan.amount, plan.currency)}</strong>
-              <small>{plan.durationDays} days - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</small>
+              <small>{plan.durationDays ? `${plan.durationDays} days` : 'Lifetime access'} - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</small>
               <p>{plan.description}</p>
             </button>
           ))}
@@ -1635,38 +1635,32 @@ function AdminPage() {
     refreshLicenses();
   }, [isAuthed, adminPassword]);
 
-  useEffect(() => {
+  const refreshLicensePlans = async () => {
     if (!isAuthed) {
       return;
     }
 
-    let isMounted = true;
-
-    async function loadLicensePlans() {
-      try {
-        const response = await fetch('/api/license/plans', {
-          headers: { Accept: 'application/json' }
-        });
-        const payload = await response.json();
-
-        if (!response.ok || !payload.ok) {
-          throw new Error('Plans request failed');
+    try {
+      const response = await fetch('/api/license/plans', {
+        headers: {
+          Accept: 'application/json',
+          'X-Admin-Password': adminPassword
         }
+      });
+      const payload = await response.json();
 
-        if (isMounted) {
-          setLicensePlans(payload.plans || []);
-        }
-      } catch {
-        if (isMounted) {
-          setLicensePlans([]);
-        }
+      if (!response.ok || !payload.ok) {
+        throw new Error('Plans request failed');
       }
-    }
 
-    loadLicensePlans();
-    return () => {
-      isMounted = false;
-    };
+      setLicensePlans(payload.plans || []);
+    } catch {
+      setLicensePlans([]);
+    }
+  };
+
+  useEffect(() => {
+    refreshLicensePlans();
   }, [isAuthed]);
 
   const updateCommentStatus = async (id, status) => {
@@ -1778,6 +1772,34 @@ function AdminPage() {
     } catch (error) {
       setLicenseStatus('error');
       setLicenseMessage(`Could not unbind device${error.message ? `: ${error.message}` : ''}.`);
+    }
+  };
+
+  const updateLicensePlan = async (planId, updates) => {
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/license/plans', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ planId, ...updates })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'Plan update failed');
+      }
+
+      setLicenseMessage('Package price updated.');
+      await refreshLicensePlans();
+      setLicenseStatus('ready');
+    } catch (error) {
+      setLicenseStatus('error');
+      setLicenseMessage(`Could not update package${error.message ? `: ${error.message}` : ''}.`);
     }
   };
 
@@ -1894,6 +1916,7 @@ function AdminPage() {
           onCreate={createLicense}
           onFormChange={setLicenseForm}
           onRefresh={refreshLicenses}
+          onUpdatePlan={updateLicensePlan}
           onUnbindActivation={unbindActivation}
           onUpdateLicense={updateLicense}
         />
@@ -2093,9 +2116,24 @@ function AdminLicensesSection({
   onCreate,
   onFormChange,
   onRefresh,
+  onUpdatePlan,
   onUnbindActivation,
   onUpdateLicense
 }) {
+  const [planDrafts, setPlanDrafts] = useState({});
+
+  useEffect(() => {
+    setPlanDrafts(Object.fromEntries((plans || []).map((plan) => [
+      plan.id,
+      {
+        amountPeso: String(Number(plan.amount || 0) / 100),
+        durationDays: plan.durationDays === null ? '' : String(plan.durationDays),
+        maxDevices: String(plan.maxDevices || 1),
+        active: plan.active !== false
+      }
+    ])));
+  }, [plans]);
+
   const copyLicenseKey = async (licenseKey) => {
     if (!navigator.clipboard) {
       return;
@@ -2140,7 +2178,74 @@ function AdminLicensesSection({
               <span>{plan.name}</span>
               <strong>{formatMoney(plan.amount, plan.currency)}</strong>
             </div>
-            <p>{plan.durationDays} days - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</p>
+            <p>{plan.durationDays ? `${plan.durationDays} days` : 'Lifetime access'} - {plan.maxDevices} device{plan.maxDevices > 1 ? 's' : ''}</p>
+            <div className="admin-plan-controls">
+              <label>
+                Price PHP
+                <input
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={planDrafts[plan.id]?.amountPeso || ''}
+                  onChange={(event) => setPlanDrafts({
+                    ...planDrafts,
+                    [plan.id]: { ...planDrafts[plan.id], amountPeso: event.target.value }
+                  })}
+                />
+              </label>
+              <label>
+                Days
+                <input
+                  min="1"
+                  placeholder="Lifetime"
+                  type="number"
+                  value={planDrafts[plan.id]?.durationDays || ''}
+                  onChange={(event) => setPlanDrafts({
+                    ...planDrafts,
+                    [plan.id]: { ...planDrafts[plan.id], durationDays: event.target.value }
+                  })}
+                />
+              </label>
+              <label>
+                Devices
+                <input
+                  min="1"
+                  type="number"
+                  value={planDrafts[plan.id]?.maxDevices || ''}
+                  onChange={(event) => setPlanDrafts({
+                    ...planDrafts,
+                    [plan.id]: { ...planDrafts[plan.id], maxDevices: event.target.value }
+                  })}
+                />
+              </label>
+              <label className="admin-plan-active">
+                <input
+                  type="checkbox"
+                  checked={planDrafts[plan.id]?.active !== false}
+                  onChange={(event) => setPlanDrafts({
+                    ...planDrafts,
+                    [plan.id]: { ...planDrafts[plan.id], active: event.target.checked }
+                  })}
+                />
+                Active
+              </label>
+              <button
+                className="outline-button"
+                type="button"
+                disabled={status === 'loading'}
+                onClick={() => {
+                  const draft = planDrafts[plan.id] || {};
+                  onUpdatePlan(plan.id, {
+                    amount: Math.round(Number(draft.amountPeso || 0) * 100),
+                    durationDays: draft.durationDays === '' ? null : Number(draft.durationDays),
+                    maxDevices: Number(draft.maxDevices || 1),
+                    active: draft.active !== false
+                  });
+                }}
+              >
+                Save
+              </button>
+            </div>
           </article>
         )) : (
           <article className="admin-plan-price-card">

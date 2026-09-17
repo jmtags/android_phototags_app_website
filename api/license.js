@@ -20,6 +20,11 @@ module.exports = async function handler(request, response) {
   }
 
   if (route === 'plans') {
+    if (request.method === 'PATCH') {
+      await licensePayments.updatePlan(request, response);
+      return;
+    }
+
     await licensePayments.listPlans(request, response);
     return;
   }

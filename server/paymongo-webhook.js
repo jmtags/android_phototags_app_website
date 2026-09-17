@@ -7,7 +7,7 @@ const {
 const { getLicensePlan } = require('./license-plans');
 
 function generateLicenseKey(planId) {
-  const prefix = planId === 'business' ? 'PT-BIZ' : planId === 'starter' ? 'PT-START' : 'PT-PRO';
+  const prefix = planId === 'lifetime' ? 'PT-LIFE' : planId === 'weekly' ? 'PT-WEEK' : 'PT-MONTH';
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const bytes = crypto.randomBytes(16);
   const chars = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
@@ -132,7 +132,7 @@ async function fulfillLicensePayment(supabase, payload, status) {
     return true;
   }
 
-  const plan = getLicensePlan(session.plan);
+  const plan = await getLicensePlan(session.plan, supabase);
   if (!plan || plan.amount !== session.amount || plan.currency !== session.currency) {
     await supabase
       .from('license_payment_sessions')

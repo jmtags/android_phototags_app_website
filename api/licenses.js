@@ -2,7 +2,7 @@ const { randomBytes } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const LICENSE_STATUSES = new Set(['active', 'revoked', 'refunded', 'expired']);
-const LICENSE_PLANS = new Set(['starter', 'pro', 'business', 'pro_lifetime', 'pro_plus']);
+const LICENSE_PLANS = new Set(['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus']);
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -280,7 +280,7 @@ async function createLicense(supabase, request, response) {
   }
 
   const licenseKey = getText(body, 'licenseKey', 'license_key') || generateLicenseKey();
-  const plan = getText(body, 'plan') || 'pro_lifetime';
+  const plan = getText(body, 'plan') || 'monthly';
   const status = getText(body, 'status') || 'active';
   const customerEmail = getText(body, 'customerEmail', 'customer_email') || null;
   const paymentReference = getText(body, 'paymentReference', 'payment_reference') || null;
