@@ -542,9 +542,6 @@ function App() {
           <p>
             Payments run through PayMongo Checkout with QR Ph support. Once payment is confirmed, PhotoTags unlocks automatically on the selected device.
           </p>
-          <p>
-            Package prices can be updated from the backend whenever launch pricing changes.
-          </p>
         </div>
 
         <div className="early-access-list">
