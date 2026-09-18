@@ -209,40 +209,50 @@ const appVersions = [
 const features = [
   {
     icon: Smartphone,
-    title: 'Android-powered',
-    body: 'Run the whole photobooth from one Android phone.'
+    title: 'Android photobooth',
+    body: 'Run capture, preview, printing, gallery, and licensing from one Android phone or tablet.'
   },
   {
-    icon: Printer,
-    title: 'Direct printing',
-    body: 'Print straight to supported printers, no computer required.'
+    icon: Camera,
+    title: 'Photobooth',
+    body: 'Guide guests through timed photo sessions with templates, retakes, signatures, stickers, and instant print preview.'
   },
   {
     icon: Grid2X2,
-    title: 'Custom layouts',
-    body: 'Create 2 x 2, 1 x 1, and mixed-size photo sheets.'
+    title: 'Receiptbooth',
+    body: 'Create receipt-style keepsakes with landscape split template selection, portrait-friendly controls, and admin-locked templates.'
   },
   {
     icon: UserSquare2,
     title: 'ID Photo Mode',
-    body: 'Capture cleaner ID photos with face guides and print preview.'
+    body: 'Capture cleaner 2 x 2, 1 x 1, and mixed ID layouts with background options and print-ready output.'
+  },
+  {
+    icon: Printer,
+    title: 'Direct printing',
+    body: 'Print through supported Canon and Epson USB/OTG printers, including Epson L3210 borderless 4R workflows.'
+  },
+  {
+    icon: ShieldCheck,
+    title: 'Licensed activation',
+    body: 'Activate devices through website checkout, QR Ph payment confirmation, and server-side license checks.'
   }
 ];
 
 const steps = [
   {
-    title: 'Connect printer',
-    body: 'Pair PhotoTags with Canon PIXMA G1010, Epson L121, or Epson L18050 and save color, paper, and orientation presets.',
+    title: 'Choose a mode',
+    body: 'Start Photobooth, Receiptbooth, ID photo, saved gallery, or reprint flows from the Android app.',
     image: '/assets/print-setup-transparent.png'
   },
   {
-    title: 'Capture the set',
-    body: 'Start a session and let the app guide guests through four timed photos.',
+    title: 'Customize the layout',
+    body: 'Use built-in templates or admin-controlled layouts with frames, backgrounds, stickers, text, and print guides.',
     image: '/assets/capture-screen-transparent.png'
   },
   {
-    title: 'Print the keepsake',
-    body: 'Preview the layout, choose copies, retake when needed, and print instantly.',
+    title: 'Print or share',
+    body: 'Preview the output, set copies, print directly to supported printers, and share finished photos through QR downloads.',
     image: '/assets/print-preview-transparent.png'
   }
 ];
@@ -379,10 +389,10 @@ function App() {
       <section className="hero" id="top">
         <div className="hero-copy">
           <p className="eyebrow">Portable <span /> Simple <span /> Print-ready</p>
-          <h1>Your Android Phone. Your Complete Photobooth.</h1>
+          <h1>Your Android Phone. Your Complete Photo Booth Studio.</h1>
           <p className="hero-text">
-            Capture, customize, and print memorable photos without a computer.
-            Built for events, school IDs, and quick photo keepsakes.
+            Capture, customize, print, and activate event-ready photo experiences without a computer.
+            Built for photobooths, receipt-style keepsakes, school IDs, and reprints.
           </p>
           <div className="hero-actions">
             <a className="primary-button" href="/api/download-apk">
@@ -395,11 +405,12 @@ function App() {
             </a>
           </div>
           <p className="early-access-note">
-            PhotoTags licensing is available through QR Ph checkout for activated devices.
+            PhotoTags licensing is available through website checkout and automatic device activation.
           </p>
           <p className="support-line">
             Works with <strong>Canon PIXMA G1010</strong>
             <strong>Epson L121</strong>
+            <strong>Epson L3210</strong>
             <strong>Epson L18050</strong>
             <span>Android camera and Logitech C270 supported</span>
           </p>
@@ -436,15 +447,15 @@ function App() {
       <section className="info-strip" id="printer-support">
         <div>
           <Grid2X2 />
-          <span>2 x 2, 1 x 1, and mixed-size ID layouts</span>
+          <span>Photobooth, Receiptbooth, ID photo, gallery, and reprint modes</span>
         </div>
         <div>
           <Printer />
-          <span>Canon PIXMA G1010, Epson L121, and Epson L18050 supported</span>
+          <span>Canon PIXMA G1010, Epson L121, Epson L3210, and Epson L18050 supported</span>
         </div>
         <div>
           <Wifi />
-          <span>Android camera and Logitech C270 USB webcam supported</span>
+          <span>Website licensing, QR downloads, Android camera, and Logitech C270 support</span>
         </div>
       </section>
 
@@ -484,7 +495,7 @@ function App() {
       <section className="showcase" id="how-it-works">
         <div className="section-heading">
           <p className="eyebrow">Fast event flow</p>
-          <h2>From capture to print in minutes.</h2>
+          <h2>From mode selection to print in minutes.</h2>
         </div>
         <div className="steps-grid">
           {steps.map((step, index) => (
@@ -503,16 +514,16 @@ function App() {
           <img src="/assets/home-screen-transparent.png" alt="PhotoTags app home screen" />
         </div>
         <div className="id-copy">
-          <p className="eyebrow">Photo booth plus ID mode</p>
-          <h2>Ready for parties, pop-ups, and quick ID photo jobs.</h2>
+          <p className="eyebrow">Multiple photo experiences</p>
+          <h2>Ready for parties, pop-ups, receipt keepsakes, and quick ID photo jobs.</h2>
           <p>
             PhotoTags keeps the session simple for guests and practical for operators:
-            guided capture, printer status, layout options, retakes, and print-ready output.
+            guided capture, printer status, layout options, retakes, license checks, and print-ready output.
           </p>
           <div className="mini-list">
-            <div><Camera /><span>Automatic session capture</span></div>
-            <div><ImageIcon /><span>Portrait and ID layouts</span></div>
-            <div><Printer /><span>Direct Android printing</span></div>
+            <div><Camera /><span>Photobooth and Receiptbooth sessions</span></div>
+            <div><ImageIcon /><span>Custom admin layouts and ID sheets</span></div>
+            <div><Printer /><span>Direct Android printing and queue handling</span></div>
           </div>
           <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
