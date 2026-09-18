@@ -60,6 +60,74 @@ const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
 const LICENSE_PLAN_OPTIONS = ['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
 const appVersions = [
   {
+    versionName: '0.2.19',
+    versionCode: 30,
+    label: 'Latest release',
+    date: 'September 2026',
+    summary: 'Receiptbooth, receipt layout admin, license tab, Epson L3210 printing, and admin cleanup updates.',
+    sections: [
+      {
+        title: 'Receiptbooth',
+        items: [
+          'Improved Step 1 template layout',
+          'Added split template view on landscape with template list on the left and a bigger selected preview on the right',
+          'Hid selected template preview in portrait mode',
+          'Fixed portrait scroll jumping when selecting templates and using Show More',
+          'Improved Step 2 print copy controls',
+          'Made receipt copy - / + float in portrait mode',
+          'Added max receipt print copies per session in Admin -> Receipt Layout',
+          'Hid photobooth/receiptbooth template previews when admin template is locked',
+          'Locked admin template now skips customer template steps: Photobooth skips Step 2 and Receiptbooth skips Step 1'
+        ]
+      },
+      {
+        title: 'Receipt Layout Admin',
+        items: [
+          'Added new Receipt Layout admin tab',
+          'Added custom receipt template editor',
+          'Admin can upload background image',
+          'Admin can set number of photo frames',
+          'Admin can move/resize frames',
+          'Added print guide lines',
+          'Added cute stickers',
+          'Added text and text color selection',
+          'Added undo/redo overlay',
+          'Cute icons now open like the photobooth layout editor',
+          'Lock to admin template works for receiptbooth'
+        ]
+      },
+      {
+        title: 'Photobooth / Admin Layout',
+        items: [
+          'Renamed Admin Layout tab to Photobooth Layout',
+          'Added separate License admin tab',
+          'Moved license activation/check UI into the License tab',
+          'Business dashboard/account pairing is disabled unless the app license is active'
+        ]
+      },
+      {
+        title: 'Printing',
+        items: [
+          'Added/fixed Epson L3210 support',
+          'Fixed image printing that previously printed ASCII or blank/ejected paper',
+          'Made Epson L3210 photobooth printing default to 4R borderless',
+          'Improved print queue behavior so printing continues even if another user starts a new session',
+          'Fixed white margin/borderless behavior workaround for L3210',
+          'Updated latest APK and version.json into the website project'
+        ]
+      },
+      {
+        title: 'Admin / UI Cleanup',
+        items: [
+          'Removed hidden printer tools opening from the upper-right status tap',
+          'Hid receipt copy - / + controls inside Admin',
+          'Added separate License tab',
+          'Kept manual Check License button'
+        ]
+      }
+    ]
+  },
+  {
     versionName: '0.2.18',
     versionCode: 29,
     label: 'Latest early access build',
