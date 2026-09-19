@@ -58,6 +58,11 @@ const LICENSE_FORM_INITIAL = {
 };
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
 const LICENSE_PLAN_OPTIONS = ['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
+const HOME_LICENSE_PLAN_FALLBACK = [
+  { id: 'weekly', name: 'Weekly', amount: 15000, currency: 'PHP' },
+  { id: 'monthly', name: 'Monthly', amount: 30000, currency: 'PHP' },
+  { id: 'lifetime', name: 'Lifetime', amount: 100000, currency: 'PHP' }
+];
 const appVersions = [
   {
     versionName: '0.2.19',
@@ -293,8 +298,16 @@ function formatReviewDate(value) {
   }).format(new Date(value));
 }
 
+function getHomePlanIcon(planId, index) {
+  if (planId === 'weekly') return BadgeCheck;
+  if (planId === 'monthly') return RefreshCw;
+  if (planId === 'lifetime') return Camera;
+  return [BadgeCheck, RefreshCw, Camera][index % 3];
+}
+
 function App() {
   const [isSiteMenuOpen, setIsSiteMenuOpen] = useState(false);
+  const [homeLicensePlans, setHomeLicensePlans] = useState(HOME_LICENSE_PLAN_FALLBACK);
   const isAdminPage = window.location.pathname === '/admin' || window.location.hash === '#admin';
   const isBusinessPage = window.location.pathname.startsWith('/business');
   const downloadMatch = window.location.pathname.match(/^\/download\/([A-Za-z0-9_-]{4,64})\/?$/);
@@ -302,12 +315,42 @@ function App() {
   const isPrivacyPage = window.location.pathname === '/privacy-policy';
   const isUsePolicyPage = window.location.pathname === '/use-policy';
   const isActivationPage = window.location.pathname === '/activate';
+  const isHomePage = !isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage && !isActivationPage;
 
   useEffect(() => {
-    if (!isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage && !isActivationPage) {
+    if (isHomePage) {
       trackAnalyticsEvent('site_visit');
     }
-  }, [isAdminPage, isBusinessPage, isDownloadPage, isPrivacyPage, isUsePolicyPage, isActivationPage]);
+  }, [isHomePage]);
+
+  useEffect(() => {
+    if (!isHomePage) {
+      return undefined;
+    }
+
+    let isCurrent = true;
+
+    async function loadHomeLicensePlans() {
+      try {
+        const response = await fetch('/api/license/plans', { headers: { Accept: 'application/json' } });
+        const payload = await response.json();
+
+        if (isCurrent && response.ok && payload.ok && Array.isArray(payload.plans) && payload.plans.length) {
+          setHomeLicensePlans(payload.plans);
+        }
+      } catch {
+        if (isCurrent) {
+          setHomeLicensePlans(HOME_LICENSE_PLAN_FALLBACK);
+        }
+      }
+    }
+
+    loadHomeLicensePlans();
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isHomePage]);
 
   if (isAdminPage) {
     return <AdminPage />;
@@ -546,15 +589,15 @@ function App() {
 
         <div className="early-access-list">
           <h3>Launch packages:</h3>
-          <div>
-            <BadgeCheck /><span>Weekly access for ₱150</span>
-          </div>
-          <div>
-            <RefreshCw /><span>Monthly access for ₱300</span>
-          </div>
-          <div>
-            <Camera /><span>Lifetime access for ₱1,000</span>
-          </div>
+          {homeLicensePlans.map((plan, index) => {
+            const PlanIcon = getHomePlanIcon(plan.id, index);
+
+            return (
+              <div key={plan.id}>
+                <PlanIcon /><span>{plan.name} access for {formatMoney(plan.amount, plan.currency)}</span>
+              </div>
+            );
+          })}
           <div>
             <ImageIcon /><span>Photobooth, ID photo, templates, stickers, QR downloads, gallery, printer, camera, and reprint tools</span>
           </div>
