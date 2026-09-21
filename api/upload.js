@@ -5,6 +5,10 @@ const BUCKET_NAME = 'photobooth-downloads';
 const DOWNLOAD_TTL_MINUTES = 30;
 const CODE_LENGTH = 10;
 const MAX_CODE_ATTEMPTS = 5;
+const UPLOAD_LIMIT = 10;
+const UPLOAD_WINDOW_MS = 60 * 1000;
+const SOFT_BAN_MS = 15 * 60 * 1000;
+const uploadBuckets = new Map();
 
 const ALLOWED_TYPES = {
   'image/jpeg': 'jpg',
@@ -44,6 +48,83 @@ function createCode() {
     .slice(0, CODE_LENGTH);
 }
 
+function getFirstHeader(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getClientFingerprint(request) {
+  const forwarded = getFirstHeader(request.headers['x-forwarded-for']);
+  const realIp = getFirstHeader(request.headers['x-real-ip']);
+  const clientIp = String(forwarded || realIp || request.socket?.remoteAddress || 'unknown')
+    .split(',')[0]
+    .trim()
+    .slice(0, 120);
+  const userAgent = String(getFirstHeader(request.headers['user-agent']) || 'unknown')
+    .trim()
+    .slice(0, 240);
+
+  return crypto
+    .createHash('sha256')
+    .update(`${clientIp}|${userAgent}`)
+    .digest('base64url');
+}
+
+function pruneUploadBuckets(now) {
+  for (const [fingerprint, bucket] of uploadBuckets.entries()) {
+    const banExpired = bucket.bannedUntil && bucket.bannedUntil <= now;
+    const windowExpired = bucket.resetAt <= now;
+
+    if (banExpired && windowExpired) {
+      uploadBuckets.delete(fingerprint);
+    }
+  }
+}
+
+function checkUploadRateLimit(request) {
+  const now = Date.now();
+  const fingerprint = getClientFingerprint(request);
+  const bucket = uploadBuckets.get(fingerprint) || {
+    count: 0,
+    resetAt: now + UPLOAD_WINDOW_MS,
+    bannedUntil: 0
+  };
+
+  pruneUploadBuckets(now);
+
+  if (bucket.bannedUntil > now) {
+    return {
+      allowed: false,
+      bannedUntil: bucket.bannedUntil,
+      retryAfterSeconds: Math.ceil((bucket.bannedUntil - now) / 1000)
+    };
+  }
+
+  if (bucket.resetAt <= now) {
+    bucket.count = 0;
+    bucket.resetAt = now + UPLOAD_WINDOW_MS;
+    bucket.bannedUntil = 0;
+  }
+
+  bucket.count += 1;
+
+  if (bucket.count > UPLOAD_LIMIT) {
+    bucket.bannedUntil = now + SOFT_BAN_MS;
+    uploadBuckets.set(fingerprint, bucket);
+    return {
+      allowed: false,
+      bannedUntil: bucket.bannedUntil,
+      retryAfterSeconds: Math.ceil(SOFT_BAN_MS / 1000)
+    };
+  }
+
+  uploadBuckets.set(fingerprint, bucket);
+  return {
+    allowed: true,
+    remaining: Math.max(UPLOAD_LIMIT - bucket.count, 0),
+    resetAt: bucket.resetAt
+  };
+}
+
 function createClientFromEnv() {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -64,6 +145,20 @@ module.exports = async function handler(request, response) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
     sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
+    return;
+  }
+
+  const uploadRate = checkUploadRateLimit(request);
+  if (!uploadRate.allowed) {
+    response.setHeader('Retry-After', String(uploadRate.retryAfterSeconds));
+    sendJson(response, 429, {
+      ok: false,
+      status: 'upload_soft_banned',
+      limit: UPLOAD_LIMIT,
+      windowSeconds: Math.ceil(UPLOAD_WINDOW_MS / 1000),
+      retryAfterSeconds: uploadRate.retryAfterSeconds,
+      bannedUntil: new Date(uploadRate.bannedUntil).toISOString()
+    });
     return;
   }
 
