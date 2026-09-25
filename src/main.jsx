@@ -2469,6 +2469,117 @@ function AdminLicensesSection({
     await navigator.clipboard.writeText(licenseKey);
   };
 
+  const toDateTimeLocal = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  };
+
+  const [filters, setFilters] = useState({
+    query: '',
+    status: 'all',
+    plan: 'all',
+    usage: 'all',
+    expiry: 'all',
+    createdFrom: '',
+    createdTo: '',
+    sort: 'newest'
+  });
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selectedLicense, setSelectedLicense] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  const filteredLicenses = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    const fromTime = filters.createdFrom ? new Date(`${filters.createdFrom}T00:00:00`).getTime() : null;
+    const toTime = filters.createdTo ? new Date(`${filters.createdTo}T23:59:59`).getTime() : null;
+    const soonTime = Date.now() + 30 * 24 * 60 * 60 * 1000;
+
+    return data.licenses
+      .filter((license) => {
+        const createdTime = license.createdAt ? new Date(license.createdAt).getTime() : null;
+        const expiresTime = license.expiresAt ? new Date(license.expiresAt).getTime() : null;
+        const isExpired = expiresTime ? expiresTime <= Date.now() : false;
+        const isFull = Number(license.activationCount || 0) >= Number(license.maxDevices || 0);
+        const text = [
+          license.licenseKey,
+          license.customerEmail,
+          license.paymentReference,
+          license.plan,
+          license.status,
+          ...license.activations.map((activation) => activation.deviceId)
+        ].join(' ').toLowerCase();
+
+        if (query && !text.includes(query)) return false;
+        if (filters.status !== 'all' && license.status !== filters.status) return false;
+        if (filters.plan !== 'all' && license.plan !== filters.plan) return false;
+        if (filters.usage === 'unused' && license.activationCount > 0) return false;
+        if (filters.usage === 'used' && license.activationCount === 0) return false;
+        if (filters.usage === 'full' && !isFull) return false;
+        if (filters.usage === 'available' && isFull) return false;
+        if (filters.expiry === 'no_expiry' && license.expiresAt) return false;
+        if (filters.expiry === 'expired' && !isExpired) return false;
+        if (filters.expiry === 'expiring_soon' && (!expiresTime || expiresTime <= Date.now() || expiresTime > soonTime)) return false;
+        if (filters.expiry === 'valid' && (isExpired || !expiresTime)) return false;
+        if (fromTime && (!createdTime || createdTime < fromTime)) return false;
+        if (toTime && (!createdTime || createdTime > toTime)) return false;
+        return true;
+      })
+      .sort((first, second) => {
+        if (filters.sort === 'plan') return first.plan.localeCompare(second.plan);
+        if (filters.sort === 'status') return first.status.localeCompare(second.status);
+        if (filters.sort === 'seats') return second.activationCount - first.activationCount;
+        if (filters.sort === 'expiry') {
+          const firstTime = first.expiresAt ? new Date(first.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+          const secondTime = second.expiresAt ? new Date(second.expiresAt).getTime() : Number.MAX_SAFE_INTEGER;
+          return firstTime - secondTime;
+        }
+        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
+        return filters.sort === 'oldest' ? firstTime - secondTime : secondTime - firstTime;
+      });
+  }, [data.licenses, filters]);
+
+  const openLicense = (license) => {
+    setSelectedLicense(license);
+    setEditForm({
+      customerEmail: license.customerEmail || '',
+      paymentReference: license.paymentReference || '',
+      plan: license.plan,
+      status: license.status,
+      maxDevices: license.maxDevices,
+      expiresAt: toDateTimeLocal(license.expiresAt)
+    });
+  };
+
+  const selectedFreshLicense = selectedLicense
+    ? data.licenses.find((license) => license.id === selectedLicense.id) || selectedLicense
+    : null;
+
+  const handleUpdate = (event) => {
+    event.preventDefault();
+    if (!selectedFreshLicense || !editForm) return;
+    onUpdateLicense(selectedFreshLicense.id, {
+      ...editForm,
+      maxDevices: Number(editForm.maxDevices || 1),
+      expiresAt: editForm.expiresAt || null
+    });
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      status: 'all',
+      plan: 'all',
+      usage: 'all',
+      expiry: 'all',
+      createdFrom: '',
+      createdTo: '',
+      sort: 'newest'
+    });
+  };
+
   return (
     <section className="admin-licenses">
       <div className="admin-comments-heading">
@@ -2476,10 +2587,16 @@ function AdminLicensesSection({
           <p className="eyebrow">License management</p>
           <h2>Track keys and activations.</h2>
         </div>
-        <button className="outline-button" type="button" onClick={onRefresh}>
-          <RefreshCw size={18} />
-          Refresh
-        </button>
+        <div className="admin-heading-actions">
+          <button className="primary-button" type="button" onClick={() => setIsAddOpen(true)}>
+            <Plus size={18} />
+            Add License
+          </button>
+          <button className="outline-button" type="button" onClick={onRefresh}>
+            <RefreshCw size={18} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="license-summary-grid">
@@ -2585,138 +2702,243 @@ function AdminLicensesSection({
         )}
       </div>
 
-      <form className="license-create-form" onSubmit={onCreate}>
-        <div className="license-form-title">
-          <KeyRound aria-hidden="true" />
-          <h3>Create license</h3>
-        </div>
-        <label>
-          License key
+      {message ? <p className={`analytics-status analytics-status-${status}`}>{message}</p> : null}
+
+      <div className="admin-filter-panel">
+        <label className="admin-search-field">
+          <Search size={18} />
           <input
-            placeholder="Leave blank to generate"
-            value={form.licenseKey}
-            onChange={(event) => onFormChange({ ...form, licenseKey: event.target.value })}
+            type="search"
+            placeholder="Search key, email, payment, device"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
           />
-        </label>
-        <label>
-          Customer email
-          <input
-            type="email"
-            value={form.customerEmail}
-            onChange={(event) => onFormChange({ ...form, customerEmail: event.target.value })}
-          />
-        </label>
-        <label>
-          Payment reference
-          <input
-            value={form.paymentReference}
-            onChange={(event) => onFormChange({ ...form, paymentReference: event.target.value })}
-          />
-        </label>
-        <label>
-          Plan
-          <select
-            value={form.plan}
-            onChange={(event) => onFormChange({ ...form, plan: event.target.value })}
-          >
-            {LICENSE_PLAN_OPTIONS.map((plan) => (
-              <option key={plan} value={plan}>{plan}</option>
-            ))}
-          </select>
         </label>
         <label>
           Status
-          <select
-            value={form.status}
-            onChange={(event) => onFormChange({ ...form, status: event.target.value })}
-          >
-            {LICENSE_STATUS_OPTIONS.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
+          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <option value="all">All statuses</option>
+            {LICENSE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
         <label>
-          Max devices
-          <input
-            min="1"
-            max="1000"
-            type="number"
-            value={form.maxDevices}
-            onChange={(event) => onFormChange({ ...form, maxDevices: event.target.value })}
-          />
+          Plan
+          <select value={filters.plan} onChange={(event) => setFilters({ ...filters, plan: event.target.value })}>
+            <option value="all">All plans</option>
+            {LICENSE_PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+          </select>
         </label>
         <label>
-          Expires at
-          <input
-            type="datetime-local"
-            value={form.expiresAt}
-            onChange={(event) => onFormChange({ ...form, expiresAt: event.target.value })}
-          />
+          Usage
+          <select value={filters.usage} onChange={(event) => setFilters({ ...filters, usage: event.target.value })}>
+            <option value="all">Any usage</option>
+            <option value="unused">Unused</option>
+            <option value="used">Has activations</option>
+            <option value="available">Seats available</option>
+            <option value="full">Fully used</option>
+          </select>
         </label>
-        <button className="primary-button" type="submit" disabled={status === 'loading'}>
-          <Plus size={18} />
-          Create
+        <label>
+          Expiry
+          <select value={filters.expiry} onChange={(event) => setFilters({ ...filters, expiry: event.target.value })}>
+            <option value="all">Any expiry</option>
+            <option value="no_expiry">No expiry</option>
+            <option value="valid">Valid dated</option>
+            <option value="expiring_soon">Expiring soon</option>
+            <option value="expired">Expired</option>
+          </select>
+        </label>
+        <label>
+          Created from
+          <input type="date" value={filters.createdFrom} onChange={(event) => setFilters({ ...filters, createdFrom: event.target.value })} />
+        </label>
+        <label>
+          Created to
+          <input type="date" value={filters.createdTo} onChange={(event) => setFilters({ ...filters, createdTo: event.target.value })} />
+        </label>
+        <label>
+          Sort
+          <select value={filters.sort} onChange={(event) => setFilters({ ...filters, sort: event.target.value })}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="expiry">Expiry date</option>
+            <option value="status">Status</option>
+            <option value="plan">Plan</option>
+            <option value="seats">Most activations</option>
+          </select>
+        </label>
+        <button className="outline-button" type="button" onClick={clearFilters}>
+          <SlidersHorizontal size={18} />
+          Clear
         </button>
-      </form>
+      </div>
 
-      {message ? <p className={`analytics-status analytics-status-${status}`}>{message}</p> : null}
+      <div className="admin-table-wrap">
+        {filteredLicenses.length ? (
+          <table className="admin-data-table">
+            <thead>
+              <tr>
+                <th>License</th>
+                <th>Customer</th>
+                <th>Plan</th>
+                <th>Status</th>
+                <th>Seats</th>
+                <th>Expires</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLicenses.map((license) => (
+                <tr key={license.id} onClick={() => openLicense(license)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openLicense(license)}>
+                  <td>
+                    <strong>{license.licenseKey}</strong>
+                    <span>{license.paymentReference || 'No payment reference'}</span>
+                  </td>
+                  <td>
+                    <strong>{license.customerEmail || 'No customer email'}</strong>
+                    <span>{license.id}</span>
+                  </td>
+                  <td>{license.plan}</td>
+                  <td><span className={`license-status license-status-${license.status}`}>{license.status}</span></td>
+                  <td>{license.activationCount}/{license.maxDevices}</td>
+                  <td>{formatDate(license.expiresAt)}</td>
+                  <td>{formatReviewDate(license.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="license-empty">
+            <KeyRound aria-hidden="true" />
+            <p>No licenses match the current filters.</p>
+          </div>
+        )}
+      </div>
 
-      <div className="license-list">
-        {data.licenses.length ? data.licenses.map((license) => (
-          <article className="license-card" key={license.id}>
-            <div className="license-card-header">
+      <p className={`analytics-status analytics-status-${status}`}>
+        {status === 'loading' ? 'Refreshing licenses' : null}
+        {status === 'ready' ? 'Licenses up to date' : null}
+        {status === 'error' ? 'License tools unavailable' : null}
+      </p>
+
+      {isAddOpen ? (
+        <div className="admin-dialog-backdrop" role="presentation">
+          <div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="add-license-title">
+            <div className="admin-dialog-header">
               <div>
-                <div className="license-key-row">
-                  <ShieldCheck aria-hidden="true" />
-                  <strong>{license.licenseKey}</strong>
-                  <button className="icon-button" type="button" onClick={() => copyLicenseKey(license.licenseKey)} aria-label="Copy license key">
-                    <Copy size={17} />
-                  </button>
-                </div>
-                <p>
-                  {license.customerEmail || 'No customer email'} - {license.paymentReference || 'No payment reference'}
-                </p>
+                <p className="eyebrow">New key</p>
+                <h3 id="add-license-title">Add License</h3>
               </div>
-              <span className={`license-status license-status-${license.status}`}>{license.status}</span>
+              <button className="icon-button" type="button" onClick={() => setIsAddOpen(false)} aria-label="Close add license dialog">
+                <X size={18} />
+              </button>
             </div>
-
-            <div className="license-meta-grid">
-              <span>Plan <strong>{license.plan}</strong></span>
-              <span>Seats <strong>{license.activationCount}/{license.maxDevices}</strong></span>
-              <span>Created <strong>{formatReviewDate(license.createdAt)}</strong></span>
-              <span>Activated <strong>{formatDate(license.activatedAt)}</strong></span>
-              <span>Expires <strong>{formatDate(license.expiresAt)}</strong></span>
-            </div>
-
-            <div className="license-controls">
+            <form className="admin-dialog-form" onSubmit={async (event) => {
+              await onCreate(event);
+              setIsAddOpen(false);
+            }}>
+              <label>
+                License key
+                <input placeholder="Leave blank to generate" value={form.licenseKey} onChange={(event) => onFormChange({ ...form, licenseKey: event.target.value })} />
+              </label>
+              <label>
+                Customer email
+                <input type="email" value={form.customerEmail} onChange={(event) => onFormChange({ ...form, customerEmail: event.target.value })} />
+              </label>
+              <label>
+                Payment reference
+                <input value={form.paymentReference} onChange={(event) => onFormChange({ ...form, paymentReference: event.target.value })} />
+              </label>
+              <label>
+                Plan
+                <select value={form.plan} onChange={(event) => onFormChange({ ...form, plan: event.target.value })}>
+                  {LICENSE_PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </label>
               <label>
                 Status
-                <select value={license.status} onChange={(event) => onUpdateLicense(license.id, { status: event.target.value })}>
-                  {LICENSE_STATUS_OPTIONS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
+                <select value={form.status} onChange={(event) => onFormChange({ ...form, status: event.target.value })}>
+                  {LICENSE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               </label>
               <label>
                 Max devices
-                <input
-                  min="1"
-                  max="1000"
-                  type="number"
-                  defaultValue={license.maxDevices}
-                  onBlur={(event) => {
-                    const nextValue = Number(event.target.value);
-                    if (nextValue !== license.maxDevices) {
-                      onUpdateLicense(license.id, { maxDevices: nextValue });
-                    }
-                  }}
-                />
+                <input min="1" max="1000" type="number" value={form.maxDevices} onChange={(event) => onFormChange({ ...form, maxDevices: event.target.value })} />
               </label>
+              <label>
+                Expires at
+                <input type="datetime-local" value={form.expiresAt} onChange={(event) => onFormChange({ ...form, expiresAt: event.target.value })} />
+              </label>
+              <button className="primary-button" type="submit" disabled={status === 'loading'}>
+                <Plus size={18} />
+                Create License
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedFreshLicense && editForm ? (
+        <div className="admin-dialog-backdrop" role="presentation">
+          <div className="admin-dialog admin-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="manage-license-title">
+            <div className="admin-dialog-header">
+              <div>
+                <p className="eyebrow">License key</p>
+                <h3 id="manage-license-title">{selectedFreshLicense.licenseKey}</h3>
+              </div>
+              <div className="admin-heading-actions">
+                <button className="icon-button" type="button" onClick={() => copyLicenseKey(selectedFreshLicense.licenseKey)} aria-label="Copy license key">
+                  <Copy size={17} />
+                </button>
+                <button className="icon-button" type="button" onClick={() => setSelectedLicense(null)} aria-label="Close manage license dialog">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <form className="admin-dialog-form admin-dialog-form-grid" onSubmit={handleUpdate}>
+              <label>
+                Customer email
+                <input type="email" value={editForm.customerEmail} onChange={(event) => setEditForm({ ...editForm, customerEmail: event.target.value })} />
+              </label>
+              <label>
+                Payment reference
+                <input value={editForm.paymentReference} onChange={(event) => setEditForm({ ...editForm, paymentReference: event.target.value })} />
+              </label>
+              <label>
+                Plan
+                <select value={editForm.plan} onChange={(event) => setEditForm({ ...editForm, plan: event.target.value })}>
+                  {LICENSE_PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+                </select>
+              </label>
+              <label>
+                Status
+                <select value={editForm.status} onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}>
+                  {LICENSE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <label>
+                Max devices
+                <input min="1" max="1000" type="number" value={editForm.maxDevices} onChange={(event) => setEditForm({ ...editForm, maxDevices: event.target.value })} />
+              </label>
+              <label>
+                Expires at
+                <input type="datetime-local" value={editForm.expiresAt} onChange={(event) => setEditForm({ ...editForm, expiresAt: event.target.value })} />
+              </label>
+              <button className="primary-button" type="submit">Save Changes</button>
+            </form>
+
+            <div className="license-meta-grid">
+              <span>Plan <strong>{selectedFreshLicense.plan}</strong></span>
+              <span>Seats <strong>{selectedFreshLicense.activationCount}/{selectedFreshLicense.maxDevices}</strong></span>
+              <span>Created <strong>{formatReviewDate(selectedFreshLicense.createdAt)}</strong></span>
+              <span>Activated <strong>{formatDate(selectedFreshLicense.activatedAt)}</strong></span>
+              <span>Expires <strong>{formatDate(selectedFreshLicense.expiresAt)}</strong></span>
             </div>
 
             <div className="activation-list">
               <h4>Activations</h4>
-              {license.activations.length ? license.activations.map((activation) => (
+              {selectedFreshLicense.activations.length ? selectedFreshLicense.activations.map((activation) => (
                 <div className="activation-row" key={activation.id}>
                   <div>
                     <strong>{activation.deviceId}</strong>
@@ -2732,20 +2954,9 @@ function AdminLicensesSection({
                 <p className="queue-empty">No devices activated yet.</p>
               )}
             </div>
-          </article>
-        )) : (
-          <div className="license-empty">
-            <KeyRound aria-hidden="true" />
-            <p>No licenses created yet.</p>
           </div>
-        )}
-      </div>
-
-      <p className={`analytics-status analytics-status-${status}`}>
-        {status === 'loading' ? 'Refreshing licenses' : null}
-        {status === 'ready' ? 'Licenses up to date' : null}
-        {status === 'error' ? 'License tools unavailable' : null}
-      </p>
+        </div>
+      ) : null}
     </section>
   );
 }
