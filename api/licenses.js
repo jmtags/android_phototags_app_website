@@ -1,8 +1,10 @@
 const { randomBytes } = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
+const { hashPassword } = require('../server/_business-utils');
 
 const LICENSE_STATUSES = new Set(['active', 'revoked', 'refunded', 'expired']);
 const LICENSE_PLANS = new Set(['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus']);
+const BUSINESS_STATUSES = new Set(['active', 'suspended', 'closed']);
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -79,6 +81,10 @@ function generateLicenseKey() {
   return `PT-PRO-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
 }
 
+function generateBusinessPassword() {
+  return randomBytes(12).toString('base64url');
+}
+
 function normalizeLicense(row, activations = []) {
   return {
     id: row.id,
@@ -112,6 +118,27 @@ function normalizeActivation(row, device) {
       trialEndsAt: device.trial_ends_at,
       status: device.status
     } : null
+  };
+}
+
+function normalizeBusiness(row) {
+  const settings = Array.isArray(row.business_payment_settings)
+    ? row.business_payment_settings[0]
+    : row.business_payment_settings;
+
+  return {
+    id: row.id,
+    businessName: row.business_name,
+    ownerName: row.owner_name,
+    email: row.email,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    paymongoConnected: Boolean(settings?.paymongo_public_key && settings?.paymongo_secret_key_encrypted),
+    qrphEnabled: Boolean(settings?.qrph_enabled),
+    webhookEnabled: Boolean(settings?.webhook_enabled),
+    linkedDevices: [],
+    paymentSessions: []
   };
 }
 
@@ -279,6 +306,11 @@ async function createLicense(supabase, request, response) {
     return;
   }
 
+  if (getText(body, 'action') === 'create_business') {
+    await createBusiness(supabase, body, response);
+    return;
+  }
+
   const licenseKey = getText(body, 'licenseKey', 'license_key') || generateLicenseKey();
   const plan = getText(body, 'plan') || 'monthly';
   const status = getText(body, 'status') || 'active';
@@ -329,6 +361,68 @@ async function createLicense(supabase, request, response) {
   });
 }
 
+async function createBusiness(supabase, body, response) {
+  const businessName = getText(body, 'businessName', 'business_name');
+  const ownerName = getText(body, 'ownerName', 'owner_name');
+  const email = getText(body, 'email').toLowerCase();
+  const status = getText(body, 'status') || 'active';
+  const password = getText(body, 'password') || generateBusinessPassword();
+
+  if (businessName.length < 2 || businessName.length > 160 || ownerName.length < 2 || ownerName.length > 160 || email.length < 5 || email.length > 254) {
+    sendJson(response, 400, { ok: false, status: 'invalid_business_fields' });
+    return;
+  }
+
+  if (!BUSINESS_STATUSES.has(status)) {
+    sendJson(response, 400, { ok: false, status: 'invalid_business_status' });
+    return;
+  }
+
+  if (password.length < 8) {
+    sendJson(response, 400, { ok: false, status: 'invalid_business_password' });
+    return;
+  }
+
+  const { data: account, error: accountError } = await supabase
+    .from('business_owner_accounts')
+    .insert({ email, password_hash: hashPassword(password) })
+    .select('id, email')
+    .single();
+
+  if (accountError) {
+    sendJson(response, accountError.code === '23505' ? 409 : 500, { ok: false, status: accountError.code === '23505' ? 'business_email_exists' : 'business_account_create_failed' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('businesses')
+    .insert({
+      owner_user_id: account.id,
+      business_name: businessName,
+      owner_name: ownerName,
+      email,
+      status
+    })
+    .select('id, business_name, owner_name, email, status, created_at, updated_at, business_payment_settings(paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled, webhook_enabled)')
+    .single();
+
+  if (error) {
+    await supabase
+      .from('business_owner_accounts')
+      .delete()
+      .eq('id', account.id);
+    sendJson(response, 500, { ok: false, status: 'business_create_failed' });
+    return;
+  }
+
+  sendJson(response, 201, {
+    ok: true,
+    status: 'business_created',
+    business: normalizeBusiness(data),
+    temporaryPassword: password
+  });
+}
+
 async function updateLicense(supabase, request, response) {
   let body;
 
@@ -340,6 +434,11 @@ async function updateLicense(supabase, request, response) {
   }
 
   const action = getText(body, 'action');
+
+  if (action === 'update_business') {
+    await updateBusiness(supabase, body, response);
+    return;
+  }
 
   if (action === 'unbind_device') {
     const activationId = getText(body, 'activationId', 'activation_id');
@@ -435,6 +534,105 @@ async function updateLicense(supabase, request, response) {
     ok: true,
     status: 'updated',
     license: normalizeLicense(data)
+  });
+}
+
+async function updateBusiness(supabase, body, response) {
+  const id = getText(body, 'id');
+  const updates = {};
+  let nextEmail = null;
+  const businessName = body.businessName ?? body.business_name;
+  const ownerName = body.ownerName ?? body.owner_name;
+  const email = body.email;
+  const status = getText(body, 'status');
+
+  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+    sendJson(response, 400, { ok: false, status: 'invalid_business_id' });
+    return;
+  }
+
+  if (businessName !== undefined) {
+    const value = typeof businessName === 'string' ? businessName.trim() : '';
+    if (value.length < 2 || value.length > 160) {
+      sendJson(response, 400, { ok: false, status: 'invalid_business_name' });
+      return;
+    }
+    updates.business_name = value;
+  }
+
+  if (ownerName !== undefined) {
+    const value = typeof ownerName === 'string' ? ownerName.trim() : '';
+    if (value.length < 2 || value.length > 160) {
+      sendJson(response, 400, { ok: false, status: 'invalid_owner_name' });
+      return;
+    }
+    updates.owner_name = value;
+  }
+
+  if (email !== undefined) {
+    const value = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    if (value.length < 5 || value.length > 254) {
+      sendJson(response, 400, { ok: false, status: 'invalid_business_email' });
+      return;
+    }
+    updates.email = value;
+    nextEmail = value;
+  }
+
+  if (status) {
+    if (!BUSINESS_STATUSES.has(status)) {
+      sendJson(response, 400, { ok: false, status: 'invalid_business_status' });
+      return;
+    }
+    updates.status = status;
+  }
+
+  if (!Object.keys(updates).length) {
+    sendJson(response, 400, { ok: false, status: 'empty_update' });
+    return;
+  }
+
+  let existingBusiness = null;
+  if (nextEmail) {
+    const { data: existing, error: existingError } = await supabase
+      .from('businesses')
+      .select('id, owner_user_id')
+      .eq('id', id)
+      .single();
+
+    if (existingError) {
+      sendJson(response, 500, { ok: false, status: 'business_lookup_failed' });
+      return;
+    }
+
+    existingBusiness = existing;
+    const { error: accountError } = await supabase
+      .from('business_owner_accounts')
+      .update({ email: nextEmail })
+      .eq('id', existingBusiness.owner_user_id);
+
+    if (accountError) {
+      sendJson(response, accountError.code === '23505' ? 409 : 500, { ok: false, status: accountError.code === '23505' ? 'business_email_exists' : 'business_account_update_failed' });
+      return;
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('businesses')
+    .update(updates)
+    .eq('id', id)
+    .select('id, business_name, owner_name, email, status, created_at, updated_at, business_payment_settings(paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled, webhook_enabled)')
+    .single();
+
+  if (error) {
+    sendJson(response, 500, { ok: false, status: 'business_update_failed' });
+    return;
+  }
+
+  sendJson(response, 200, {
+    ok: true,
+    status: 'business_updated',
+    business: normalizeBusiness(data)
   });
 }
 

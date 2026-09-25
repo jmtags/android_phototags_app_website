@@ -20,8 +20,10 @@ import {
   Plus,
   Printer,
   RefreshCw,
+  Search,
   Send,
   ShieldCheck,
+  SlidersHorizontal,
   Smartphone,
   Star,
   ThumbsUp,
@@ -58,6 +60,14 @@ const LICENSE_FORM_INITIAL = {
 };
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
 const LICENSE_PLAN_OPTIONS = ['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
+const BUSINESS_FORM_INITIAL = {
+  businessName: '',
+  ownerName: '',
+  email: '',
+  password: '',
+  status: 'active'
+};
+const BUSINESS_STATUS_OPTIONS = ['active', 'suspended', 'closed'];
 const HOME_LICENSE_PLAN_FALLBACK = [
   { id: 'weekly', name: 'Weekly', amount: 15000, currency: 'PHP' },
   { id: 'monthly', name: 'Monthly', amount: 30000, currency: 'PHP' },
@@ -1755,6 +1765,7 @@ function AdminPage() {
   });
   const [licensePlans, setLicensePlans] = useState([]);
   const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
+  const [businessForm, setBusinessForm] = useState(BUSINESS_FORM_INITIAL);
   const [activeAdminSection, setActiveAdminSection] = useState('overview');
 
   useEffect(() => {
@@ -2026,6 +2037,66 @@ function AdminPage() {
     }
   };
 
+  const createBusiness = async (event) => {
+    event.preventDefault();
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({
+          action: 'create_business',
+          ...businessForm,
+          password: businessForm.password || undefined
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'Business create failed');
+      }
+
+      setBusinessForm(BUSINESS_FORM_INITIAL);
+      setLicenseMessage(payload.temporaryPassword ? `Business created. Temporary password: ${payload.temporaryPassword}` : 'Business created.');
+      await refreshLicenses();
+    } catch (error) {
+      setLicenseStatus('error');
+      setLicenseMessage(`Could not create business${error.message ? `: ${error.message}` : ''}.`);
+    }
+  };
+
+  const updateBusiness = async (id, updates) => {
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ action: 'update_business', id, ...updates })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'Business update failed');
+      }
+
+      setLicenseMessage('Business updated.');
+      await refreshLicenses();
+    } catch (error) {
+      setLicenseStatus('error');
+      setLicenseMessage(`Could not update business${error.message ? `: ${error.message}` : ''}.`);
+    }
+  };
+
   const updateLicensePlan = async (planId, updates) => {
     setLicenseStatus('loading');
     setLicenseMessage('');
@@ -2189,9 +2260,14 @@ function AdminPage() {
       return (
         <AdminBusinessesSection
           businesses={licenseData.businesses}
+          form={businessForm}
+          message={licenseMessage}
           paymentSessions={licenseData.paymentSessions}
           status={licenseStatus}
+          onCreate={createBusiness}
+          onFormChange={setBusinessForm}
           onRefresh={refreshLicenses}
+          onUpdateBusiness={updateBusiness}
         />
       );
     }
@@ -2674,7 +2750,121 @@ function AdminLicensesSection({
   );
 }
 
-function AdminBusinessesSection({ businesses, paymentSessions, status, onRefresh }) {
+function AdminBusinessesSection({
+  businesses,
+  form,
+  message,
+  paymentSessions,
+  status,
+  onCreate,
+  onFormChange,
+  onRefresh,
+  onUpdateBusiness
+}) {
+  const [filters, setFilters] = useState({
+    query: '',
+    status: 'all',
+    paymongo: 'all',
+    qrph: 'all',
+    webhook: 'all',
+    devices: 'all',
+    payments: 'all',
+    createdFrom: '',
+    createdTo: '',
+    sort: 'newest'
+  });
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [selectedBusiness, setSelectedBusiness] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  const filteredBusinesses = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    const fromTime = filters.createdFrom ? new Date(`${filters.createdFrom}T00:00:00`).getTime() : null;
+    const toTime = filters.createdTo ? new Date(`${filters.createdTo}T23:59:59`).getTime() : null;
+
+    return businesses
+      .filter((business) => {
+        const createdTime = business.createdAt ? new Date(business.createdAt).getTime() : null;
+        const hasDevices = business.linkedDevices.length > 0;
+        const paidPayments = business.paymentSessions.filter((payment) => payment.status === 'paid').length;
+        const hasPayments = business.paymentSessions.length > 0;
+        const text = [
+          business.businessName,
+          business.ownerName,
+          business.email,
+          business.status,
+          ...business.linkedDevices.map((device) => device.device_id),
+          ...business.paymentSessions.map((payment) => payment.device_id)
+        ].join(' ').toLowerCase();
+
+        if (query && !text.includes(query)) return false;
+        if (filters.status !== 'all' && business.status !== filters.status) return false;
+        if (filters.paymongo === 'connected' && !business.paymongoConnected) return false;
+        if (filters.paymongo === 'missing' && business.paymongoConnected) return false;
+        if (filters.qrph === 'enabled' && !business.qrphEnabled) return false;
+        if (filters.qrph === 'disabled' && business.qrphEnabled) return false;
+        if (filters.webhook === 'enabled' && !business.webhookEnabled) return false;
+        if (filters.webhook === 'disabled' && business.webhookEnabled) return false;
+        if (filters.devices === 'linked' && !hasDevices) return false;
+        if (filters.devices === 'none' && hasDevices) return false;
+        if (filters.payments === 'paid' && !paidPayments) return false;
+        if (filters.payments === 'unpaid' && (!hasPayments || paidPayments)) return false;
+        if (filters.payments === 'none' && hasPayments) return false;
+        if (fromTime && (!createdTime || createdTime < fromTime)) return false;
+        if (toTime && (!createdTime || createdTime > toTime)) return false;
+        return true;
+      })
+      .sort((first, second) => {
+        if (filters.sort === 'name') {
+          return first.businessName.localeCompare(second.businessName);
+        }
+        if (filters.sort === 'devices') {
+          return second.linkedDevices.length - first.linkedDevices.length;
+        }
+        if (filters.sort === 'payments') {
+          return second.paymentSessions.length - first.paymentSessions.length;
+        }
+        const firstTime = first.createdAt ? new Date(first.createdAt).getTime() : 0;
+        const secondTime = second.createdAt ? new Date(second.createdAt).getTime() : 0;
+        return filters.sort === 'oldest' ? firstTime - secondTime : secondTime - firstTime;
+      });
+  }, [businesses, filters]);
+
+  const openBusiness = (business) => {
+    setSelectedBusiness(business);
+    setEditForm({
+      businessName: business.businessName,
+      ownerName: business.ownerName,
+      email: business.email,
+      status: business.status
+    });
+  };
+
+  const selectedFreshBusiness = selectedBusiness
+    ? businesses.find((business) => business.id === selectedBusiness.id) || selectedBusiness
+    : null;
+
+  const handleUpdate = (event) => {
+    event.preventDefault();
+    if (!selectedFreshBusiness || !editForm) return;
+    onUpdateBusiness(selectedFreshBusiness.id, editForm);
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      status: 'all',
+      paymongo: 'all',
+      qrph: 'all',
+      webhook: 'all',
+      devices: 'all',
+      payments: 'all',
+      createdFrom: '',
+      createdTo: '',
+      sort: 'newest'
+    });
+  };
+
   return (
     <section className="admin-licenses">
       <div className="admin-comments-heading">
@@ -2682,10 +2872,16 @@ function AdminBusinessesSection({ businesses, paymentSessions, status, onRefresh
           <p className="eyebrow">Business accounts</p>
           <h2>Owners, devices, and payments.</h2>
         </div>
-        <button className="outline-button" type="button" onClick={onRefresh}>
-          <RefreshCw size={18} />
-          Refresh
-        </button>
+        <div className="admin-heading-actions">
+          <button className="primary-button" type="button" onClick={() => setIsAddOpen(true)}>
+            <Plus size={18} />
+            Add Business
+          </button>
+          <button className="outline-button" type="button" onClick={onRefresh}>
+            <RefreshCw size={18} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="license-summary-grid">
@@ -2704,67 +2900,255 @@ function AdminBusinessesSection({ businesses, paymentSessions, status, onRefresh
         ))}
       </div>
 
-      <div className="license-list">
-        {businesses.length ? businesses.map((business) => (
-          <article className="license-card" key={business.id}>
-            <div className="license-card-header">
-              <div>
-                <div className="license-key-row">
-                  <Building2 aria-hidden="true" />
-                  <strong>{business.businessName}</strong>
-                </div>
-                <p>{business.ownerName} - {business.email}</p>
-              </div>
-              <span className={business.paymongoConnected ? 'license-status license-status-active' : 'license-status'}>
-                {business.paymongoConnected ? 'PayMongo connected' : 'PayMongo not connected'}
-              </span>
-            </div>
+      <div className="admin-filter-panel">
+        <label className="admin-search-field">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search business, owner, email, device"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+          />
+        </label>
+        <label>
+          Status
+          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <option value="all">All statuses</option>
+            {BUSINESS_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label>
+          PayMongo
+          <select value={filters.paymongo} onChange={(event) => setFilters({ ...filters, paymongo: event.target.value })}>
+            <option value="all">Any PayMongo</option>
+            <option value="connected">Connected</option>
+            <option value="missing">Not connected</option>
+          </select>
+        </label>
+        <label>
+          QRPH
+          <select value={filters.qrph} onChange={(event) => setFilters({ ...filters, qrph: event.target.value })}>
+            <option value="all">Any QRPH</option>
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+        <label>
+          Webhook
+          <select value={filters.webhook} onChange={(event) => setFilters({ ...filters, webhook: event.target.value })}>
+            <option value="all">Any webhook</option>
+            <option value="enabled">Enabled</option>
+            <option value="disabled">Disabled</option>
+          </select>
+        </label>
+        <label>
+          Devices
+          <select value={filters.devices} onChange={(event) => setFilters({ ...filters, devices: event.target.value })}>
+            <option value="all">Any devices</option>
+            <option value="linked">Has devices</option>
+            <option value="none">No devices</option>
+          </select>
+        </label>
+        <label>
+          Payments
+          <select value={filters.payments} onChange={(event) => setFilters({ ...filters, payments: event.target.value })}>
+            <option value="all">Any payments</option>
+            <option value="paid">Has paid payments</option>
+            <option value="unpaid">Only unpaid payments</option>
+            <option value="none">No payments</option>
+          </select>
+        </label>
+        <label>
+          Created from
+          <input type="date" value={filters.createdFrom} onChange={(event) => setFilters({ ...filters, createdFrom: event.target.value })} />
+        </label>
+        <label>
+          Created to
+          <input type="date" value={filters.createdTo} onChange={(event) => setFilters({ ...filters, createdTo: event.target.value })} />
+        </label>
+        <label>
+          Sort
+          <select value={filters.sort} onChange={(event) => setFilters({ ...filters, sort: event.target.value })}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Business name</option>
+            <option value="devices">Most devices</option>
+            <option value="payments">Most payments</option>
+          </select>
+        </label>
+        <button className="outline-button" type="button" onClick={clearFilters}>
+          <SlidersHorizontal size={18} />
+          Clear
+        </button>
+      </div>
 
-            <div className="license-meta-grid">
-              <span>Status <strong>{business.status}</strong></span>
-              <span>QRPH <strong>{business.qrphEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
-              <span>Webhook <strong>{business.webhookEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
-              <span>Devices <strong>{business.linkedDevices.length}</strong></span>
-              <span>Payments <strong>{business.paymentSessions.length}</strong></span>
-            </div>
-
-            <div className="activation-list">
-              <h4>Linked devices</h4>
-              {business.linkedDevices.length ? business.linkedDevices.slice(0, 6).map((device) => (
-                <div className="activation-row" key={device.device_id}>
-                  <div>
-                    <strong>{device.device_id}</strong>
-                    <span>{device.platform || 'android'} - {device.app_version || 'unknown'} - last seen {formatDate(device.last_seen_at)}</span>
-                  </div>
-                </div>
-              )) : <p className="queue-empty">No linked devices.</p>}
-            </div>
-
-            <div className="activation-list">
-              <h4>Recent payments</h4>
-              {business.paymentSessions.length ? business.paymentSessions.slice(0, 6).map((payment) => (
-                <div className="activation-row" key={payment.id}>
-                  <div>
-                    <strong>{formatMoney(payment.amount, payment.currency)} - {payment.status}</strong>
-                    <span>{payment.mode} - {payment.device_id} - {formatDate(payment.created_at)}</span>
-                  </div>
-                </div>
-              )) : <p className="queue-empty">No payment sessions.</p>}
-            </div>
-          </article>
-        )) : (
+      <div className="admin-table-wrap">
+        {filteredBusinesses.length ? (
+          <table className="admin-data-table">
+            <thead>
+              <tr>
+                <th>Business</th>
+                <th>Owner</th>
+                <th>Status</th>
+                <th>PayMongo</th>
+                <th>Devices</th>
+                <th>Payments</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredBusinesses.map((business) => (
+                <tr key={business.id} onClick={() => openBusiness(business)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openBusiness(business)}>
+                  <td>
+                    <strong>{business.businessName}</strong>
+                    <span>{business.email}</span>
+                  </td>
+                  <td>
+                    <strong>{business.ownerName}</strong>
+                    <span>{business.id}</span>
+                  </td>
+                  <td><span className={`license-status license-status-${business.status === 'active' ? 'active' : 'revoked'}`}>{business.status}</span></td>
+                  <td>{business.paymongoConnected ? 'Connected' : 'Not connected'}</td>
+                  <td>{business.linkedDevices.length}</td>
+                  <td>{business.paymentSessions.length}</td>
+                  <td>{formatReviewDate(business.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
           <div className="license-empty">
             <Building2 aria-hidden="true" />
-            <p>No business accounts yet.</p>
+            <p>No business accounts match the current filters.</p>
           </div>
         )}
       </div>
+
+      {message ? <p className="business-admin-message">{message}</p> : null}
 
       <p className={`analytics-status analytics-status-${status}`}>
         {status === 'loading' ? 'Refreshing businesses' : null}
         {status === 'ready' ? 'Businesses up to date' : null}
         {status === 'error' ? 'Business tools unavailable' : null}
       </p>
+
+      {isAddOpen ? (
+        <div className="admin-dialog-backdrop" role="presentation">
+          <div className="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="add-business-title">
+            <div className="admin-dialog-header">
+              <div>
+                <p className="eyebrow">New account</p>
+                <h3 id="add-business-title">Add Business</h3>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setIsAddOpen(false)} aria-label="Close add business dialog">
+                <X size={18} />
+              </button>
+            </div>
+            <form className="admin-dialog-form" onSubmit={(event) => {
+              onCreate(event);
+              setIsAddOpen(false);
+            }}>
+              <label>
+                Business name
+                <input required value={form.businessName} onChange={(event) => onFormChange({ ...form, businessName: event.target.value })} />
+              </label>
+              <label>
+                Owner name
+                <input required value={form.ownerName} onChange={(event) => onFormChange({ ...form, ownerName: event.target.value })} />
+              </label>
+              <label>
+                Email
+                <input required type="email" value={form.email} onChange={(event) => onFormChange({ ...form, email: event.target.value })} />
+              </label>
+              <label>
+                Temporary password
+                <input minLength={8} placeholder="Auto-generate if blank" value={form.password} onChange={(event) => onFormChange({ ...form, password: event.target.value })} />
+              </label>
+              <label>
+                Status
+                <select value={form.status} onChange={(event) => onFormChange({ ...form, status: event.target.value })}>
+                  {BUSINESS_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <button className="primary-button" type="submit">
+                <Plus size={18} />
+                Create Business
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {selectedFreshBusiness && editForm ? (
+        <div className="admin-dialog-backdrop" role="presentation">
+          <div className="admin-dialog admin-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="manage-business-title">
+            <div className="admin-dialog-header">
+              <div>
+                <p className="eyebrow">Business account</p>
+                <h3 id="manage-business-title">{selectedFreshBusiness.businessName}</h3>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedBusiness(null)} aria-label="Close manage business dialog">
+                <X size={18} />
+              </button>
+            </div>
+            <form className="admin-dialog-form admin-dialog-form-grid" onSubmit={handleUpdate}>
+              <label>
+                Business name
+                <input required value={editForm.businessName} onChange={(event) => setEditForm({ ...editForm, businessName: event.target.value })} />
+              </label>
+              <label>
+                Owner name
+                <input required value={editForm.ownerName} onChange={(event) => setEditForm({ ...editForm, ownerName: event.target.value })} />
+              </label>
+              <label>
+                Email
+                <input required type="email" value={editForm.email} onChange={(event) => setEditForm({ ...editForm, email: event.target.value })} />
+              </label>
+              <label>
+                Status
+                <select value={editForm.status} onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}>
+                  {BUSINESS_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <button className="primary-button" type="submit">Save Changes</button>
+            </form>
+
+            <div className="license-meta-grid">
+              <span>PayMongo <strong>{selectedFreshBusiness.paymongoConnected ? 'Connected' : 'Not connected'}</strong></span>
+              <span>QRPH <strong>{selectedFreshBusiness.qrphEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
+              <span>Webhook <strong>{selectedFreshBusiness.webhookEnabled ? 'Enabled' : 'Not enabled'}</strong></span>
+              <span>Devices <strong>{selectedFreshBusiness.linkedDevices.length}</strong></span>
+              <span>Payments <strong>{selectedFreshBusiness.paymentSessions.length}</strong></span>
+            </div>
+
+            <div className="admin-dialog-lists">
+              <div className="activation-list">
+                <h4>Linked devices</h4>
+                {selectedFreshBusiness.linkedDevices.length ? selectedFreshBusiness.linkedDevices.map((device) => (
+                  <div className="activation-row" key={device.device_id}>
+                    <div>
+                      <strong>{device.device_id}</strong>
+                      <span>{device.platform || 'android'} - {device.app_version || 'unknown'} - last seen {formatDate(device.last_seen_at)}</span>
+                    </div>
+                  </div>
+                )) : <p className="queue-empty">No linked devices.</p>}
+              </div>
+
+              <div className="activation-list">
+                <h4>Recent payments</h4>
+                {selectedFreshBusiness.paymentSessions.length ? selectedFreshBusiness.paymentSessions.map((payment) => (
+                  <div className="activation-row" key={payment.id}>
+                    <div>
+                      <strong>{formatMoney(payment.amount, payment.currency)} - {payment.status}</strong>
+                      <span>{payment.mode} - {payment.device_id} - {formatDate(payment.created_at)}</span>
+                    </div>
+                  </div>
+                )) : <p className="queue-empty">No payment sessions.</p>}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

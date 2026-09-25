@@ -1401,6 +1401,13 @@ button:disabled {
   gap: 20px;
 }
 
+.admin-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .admin-comments-heading h2 {
   margin: 0;
   font-size: clamp(1.8rem, 3.8vw, 3rem);
@@ -1700,6 +1707,155 @@ button:disabled {
 .license-empty p {
   margin: 0;
   color: rgba(244, 248, 255, 0.72);
+}
+
+.admin-filter-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.5fr) repeat(4, minmax(130px, 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.24);
+}
+
+.admin-filter-panel label,
+.admin-dialog-form label {
+  display: grid;
+  gap: 8px;
+  color: rgba(244, 248, 255, 0.72);
+  font-weight: 740;
+}
+
+.admin-search-field {
+  position: relative;
+}
+
+.admin-search-field svg {
+  position: absolute;
+  left: 12px;
+  bottom: 13px;
+  color: rgba(244, 248, 255, 0.58);
+}
+
+.admin-search-field input {
+  padding-left: 40px;
+}
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.22);
+}
+
+.admin-data-table {
+  width: 100%;
+  min-width: 920px;
+  border-collapse: collapse;
+}
+
+.admin-data-table th,
+.admin-data-table td {
+  padding: 14px;
+  text-align: left;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.admin-data-table th {
+  color: rgba(244, 248, 255, 0.62);
+  font-size: 0.8rem;
+  font-weight: 860;
+  text-transform: uppercase;
+}
+
+.admin-data-table tbody tr {
+  cursor: pointer;
+}
+
+.admin-data-table tbody tr:hover,
+.admin-data-table tbody tr:focus {
+  background: rgba(0, 199, 119, 0.08);
+  outline: none;
+}
+
+.admin-data-table td strong,
+.admin-data-table td span {
+  display: block;
+}
+
+.admin-data-table td span {
+  color: rgba(244, 248, 255, 0.58);
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.business-admin-message {
+  margin: 0;
+  color: #00d887;
+  font-weight: 760;
+  overflow-wrap: anywhere;
+}
+
+.admin-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(2, 6, 12, 0.74);
+}
+
+.admin-dialog {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 620px);
+  max-height: min(92vh, 900px);
+  overflow: auto;
+  padding: clamp(20px, 4vw, 28px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: #101927;
+  box-shadow: 0 34px 90px rgba(0, 0, 0, 0.42);
+}
+
+.admin-dialog-wide {
+  width: min(100%, 980px);
+}
+
+.admin-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.admin-dialog-header h3 {
+  margin: 0;
+  font-size: 1.55rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-dialog-form {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-dialog-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+}
+
+.admin-dialog-form-grid .primary-button {
+  grid-column: 1 / -1;
+}
+
+.admin-dialog-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
 }
 
 .comment-queue {
@@ -2412,6 +2568,7 @@ button:disabled {
   }
 
   .license-summary-grid,
+  .admin-filter-panel,
   .admin-plan-price-grid {
     grid-template-columns: repeat(3, 1fr);
   }
@@ -2455,6 +2612,9 @@ button:disabled {
   .admin-details,
   .location-grid,
   .comment-queues,
+  .admin-filter-panel,
+  .admin-dialog-form-grid,
+  .admin-dialog-lists,
   .license-create-form,
   .license-controls,
   .business-grid,
@@ -2475,6 +2635,15 @@ button:disabled {
   .admin-comments-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .admin-heading-actions {
+    width: 100%;
+  }
+
+  .admin-heading-actions .primary-button,
+  .admin-heading-actions .outline-button {
+    flex: 1 1 190px;
   }
 
   .license-summary-grid,
