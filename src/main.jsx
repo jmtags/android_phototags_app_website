@@ -3096,6 +3096,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
     query: '',
     status: 'all',
     platform: 'all',
+    version: 'all',
     license: 'all',
     business: 'all',
     trial: 'all',
@@ -3107,6 +3108,10 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
 
   const platformOptions = useMemo(
     () => Array.from(new Set(devices.map((device) => device.platform || 'android'))).sort(),
+    [devices]
+  );
+  const versionOptions = useMemo(
+    () => Array.from(new Set(devices.map((device) => device.appVersion || 'unknown'))).sort(),
     [devices]
   );
 
@@ -3134,6 +3139,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
         if (query && !text.includes(query)) return false;
         if (filters.status !== 'all' && device.status !== filters.status) return false;
         if (filters.platform !== 'all' && (device.platform || 'android') !== filters.platform) return false;
+        if (filters.version !== 'all' && (device.appVersion || 'unknown') !== filters.version) return false;
         if (filters.license === 'licensed' && !hasLicenses) return false;
         if (filters.license === 'unlicensed' && hasLicenses) return false;
         if (filters.business === 'linked' && !hasBusiness) return false;
@@ -3182,6 +3188,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
       query: '',
       status: 'all',
       platform: 'all',
+      version: 'all',
       license: 'all',
       business: 'all',
       trial: 'all',
@@ -3249,6 +3256,13 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
           <select value={filters.platform} onChange={(event) => setFilters({ ...filters, platform: event.target.value })}>
             <option value="all">All platforms</option>
             {platformOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label>
+          Version
+          <select value={filters.version} onChange={(event) => setFilters({ ...filters, version: event.target.value })}>
+            <option value="all">All versions</option>
+            {versionOptions.map((option) => <option key={option} value={option}>{option}</option>)}
           </select>
         </label>
         <label>
