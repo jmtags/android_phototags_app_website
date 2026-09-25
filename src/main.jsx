@@ -3079,6 +3079,14 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
       });
   }, [devices, filters]);
 
+  const filteredDeviceStats = useMemo(() => ({
+    matched: filteredDevices.length,
+    licensed: filteredDevices.filter((device) => device.status === 'licensed').length,
+    trials: filteredDevices.filter((device) => device.status === 'trial').length,
+    blocked: filteredDevices.filter((device) => device.status === 'blocked').length,
+    businessLinked: filteredDevices.filter((device) => device.business).length
+  }), [filteredDevices]);
+
   const selectedFreshDevice = selectedDevice
     ? devices.find((device) => device.deviceId === selectedDevice.deviceId) || selectedDevice
     : null;
@@ -3209,6 +3217,18 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
           <SlidersHorizontal size={18} />
           Clear
         </button>
+      </div>
+
+      <div className="admin-filter-stats" aria-live="polite">
+        {[
+          ['Matched', filteredDeviceStats.matched],
+          ['Licensed', filteredDeviceStats.licensed],
+          ['Trials', filteredDeviceStats.trials],
+          ['Blocked', filteredDeviceStats.blocked],
+          ['Business linked', filteredDeviceStats.businessLinked]
+        ].map(([label, value]) => (
+          <span key={label}>{label} <strong>{value}</strong></span>
+        ))}
       </div>
 
       <div className="admin-table-wrap">

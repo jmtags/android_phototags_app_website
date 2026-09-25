@@ -1743,6 +1743,30 @@ button:disabled {
   padding-left: 40px;
 }
 
+.admin-filter-stats {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-filter-stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.24);
+  color: rgba(244, 248, 255, 0.68);
+  font-size: 0.9rem;
+  font-weight: 760;
+}
+
+.admin-filter-stats strong {
+  color: #ffffff;
+}
+
 .admin-table-wrap {
   overflow-x: auto;
   border: 1px solid rgba(255, 255, 255, 0.12);
