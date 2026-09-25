@@ -68,6 +68,7 @@ const BUSINESS_FORM_INITIAL = {
   status: 'active'
 };
 const BUSINESS_STATUS_OPTIONS = ['active', 'suspended', 'closed'];
+const DEVICE_STATUS_OPTIONS = ['trial', 'trial_expired', 'licensed', 'blocked'];
 const HOME_LICENSE_PLAN_FALLBACK = [
   { id: 'weekly', name: 'Weekly', amount: 15000, currency: 'PHP' },
   { id: 'monthly', name: 'Monthly', amount: 30000, currency: 'PHP' },
@@ -1760,6 +1761,7 @@ function AdminPage() {
       devices: 0
     },
     licenses: [],
+    devices: [],
     businesses: [],
     paymentSessions: []
   });
@@ -1883,6 +1885,7 @@ function AdminPage() {
       setLicenseData({
         summary: payload.summary,
         licenses: payload.licenses || [],
+        devices: payload.devices || [],
         businesses: payload.businesses || [],
         paymentSessions: payload.paymentSessions || []
       });
@@ -2097,6 +2100,33 @@ function AdminPage() {
     }
   };
 
+  const updateDevice = async (deviceId, updates) => {
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({ action: 'update_device', deviceId, ...updates })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'Device update failed');
+      }
+
+      setLicenseMessage('Device updated.');
+      await refreshLicenses();
+    } catch (error) {
+      setLicenseStatus('error');
+      setLicenseMessage(`Could not update device${error.message ? `: ${error.message}` : ''}.`);
+    }
+  };
+
   const updateLicensePlan = async (planId, updates) => {
     setLicenseStatus('loading');
     setLicenseMessage('');
@@ -2162,6 +2192,13 @@ function AdminPage() {
         label: 'Businesses',
         icon: Building2,
         count: licenseData.businesses.length,
+        status: licenseStatus
+      },
+      {
+        id: 'devices',
+        label: 'Devices',
+        icon: Smartphone,
+        count: licenseData.devices.length,
         status: licenseStatus
       },
       {
@@ -2252,6 +2289,18 @@ function AdminPage() {
           status={commentStatus}
           onRefresh={refreshAdminComments}
           onUpdateStatus={updateCommentStatus}
+        />
+      );
+    }
+
+    if (activeAdminSection === 'devices') {
+      return (
+        <AdminDevicesSection
+          devices={licenseData.devices}
+          message={licenseMessage}
+          status={licenseStatus}
+          onRefresh={refreshLicenses}
+          onUpdateDevice={updateDevice}
         />
       );
     }
@@ -2953,6 +3002,330 @@ function AdminLicensesSection({
               )) : (
                 <p className="queue-empty">No devices activated yet.</p>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevice }) {
+  const [filters, setFilters] = useState({
+    query: '',
+    status: 'all',
+    platform: 'all',
+    license: 'all',
+    business: 'all',
+    trial: 'all',
+    lastSeen: 'all',
+    sort: 'recent'
+  });
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+
+  const platformOptions = useMemo(
+    () => Array.from(new Set(devices.map((device) => device.platform || 'android'))).sort(),
+    [devices]
+  );
+
+  const filteredDevices = useMemo(() => {
+    const query = filters.query.trim().toLowerCase();
+    const now = Date.now();
+    const dayMs = 24 * 60 * 60 * 1000;
+
+    return devices
+      .filter((device) => {
+        const lastSeenTime = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0;
+        const trialEndsTime = device.trialEndsAt ? new Date(device.trialEndsAt).getTime() : null;
+        const hasLicenses = device.licenses.length > 0;
+        const hasBusiness = Boolean(device.business);
+        const text = [
+          device.deviceId,
+          device.status,
+          device.platform,
+          device.appVersion,
+          device.business?.businessName,
+          device.business?.email,
+          ...device.licenses.map((license) => license.licenseKey)
+        ].join(' ').toLowerCase();
+
+        if (query && !text.includes(query)) return false;
+        if (filters.status !== 'all' && device.status !== filters.status) return false;
+        if (filters.platform !== 'all' && (device.platform || 'android') !== filters.platform) return false;
+        if (filters.license === 'licensed' && !hasLicenses) return false;
+        if (filters.license === 'unlicensed' && hasLicenses) return false;
+        if (filters.business === 'linked' && !hasBusiness) return false;
+        if (filters.business === 'none' && hasBusiness) return false;
+        if (filters.trial === 'active' && (!trialEndsTime || trialEndsTime <= now)) return false;
+        if (filters.trial === 'expired' && (!trialEndsTime || trialEndsTime > now)) return false;
+        if (filters.lastSeen === 'today' && now - lastSeenTime > dayMs) return false;
+        if (filters.lastSeen === 'week' && now - lastSeenTime > 7 * dayMs) return false;
+        if (filters.lastSeen === 'stale' && (!lastSeenTime || now - lastSeenTime <= 30 * dayMs)) return false;
+        return true;
+      })
+      .sort((first, second) => {
+        if (filters.sort === 'first_seen') {
+          return new Date(second.firstSeenAt || 0).getTime() - new Date(first.firstSeenAt || 0).getTime();
+        }
+        if (filters.sort === 'trial') {
+          const firstTime = first.trialEndsAt ? new Date(first.trialEndsAt).getTime() : Number.MAX_SAFE_INTEGER;
+          const secondTime = second.trialEndsAt ? new Date(second.trialEndsAt).getTime() : Number.MAX_SAFE_INTEGER;
+          return firstTime - secondTime;
+        }
+        if (filters.sort === 'status') return first.status.localeCompare(second.status);
+        if (filters.sort === 'app') return (first.appVersion || '').localeCompare(second.appVersion || '');
+        return new Date(second.lastSeenAt || 0).getTime() - new Date(first.lastSeenAt || 0).getTime();
+      });
+  }, [devices, filters]);
+
+  const selectedFreshDevice = selectedDevice
+    ? devices.find((device) => device.deviceId === selectedDevice.deviceId) || selectedDevice
+    : null;
+
+  const openDevice = (device) => {
+    setSelectedDevice(device);
+    setEditForm({ status: device.status });
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      query: '',
+      status: 'all',
+      platform: 'all',
+      license: 'all',
+      business: 'all',
+      trial: 'all',
+      lastSeen: 'all',
+      sort: 'recent'
+    });
+  };
+
+  const handleUpdate = (event) => {
+    event.preventDefault();
+    if (!selectedFreshDevice || !editForm) return;
+    onUpdateDevice(selectedFreshDevice.deviceId, editForm);
+  };
+
+  return (
+    <section className="admin-licenses">
+      <div className="admin-comments-heading">
+        <div>
+          <p className="eyebrow">Installed app devices</p>
+          <h2>Track devices, trials, licenses, and business links.</h2>
+        </div>
+        <button className="outline-button" type="button" onClick={onRefresh}>
+          <RefreshCw size={18} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="license-summary-grid">
+        {[
+          ['Total devices', devices.length],
+          ['Licensed', devices.filter((device) => device.status === 'licensed').length],
+          ['Trials', devices.filter((device) => device.status === 'trial').length],
+          ['Expired trials', devices.filter((device) => device.status === 'trial_expired').length],
+          ['Blocked', devices.filter((device) => device.status === 'blocked').length],
+          ['Business linked', devices.filter((device) => device.business).length]
+        ].map(([label, value]) => (
+          <div className="license-summary-item" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+
+      {message ? <p className={`analytics-status analytics-status-${status}`}>{message}</p> : null}
+
+      <div className="admin-filter-panel">
+        <label className="admin-search-field">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Search device, app, business, license"
+            value={filters.query}
+            onChange={(event) => setFilters({ ...filters, query: event.target.value })}
+          />
+        </label>
+        <label>
+          Status
+          <select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}>
+            <option value="all">All statuses</option>
+            {DEVICE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label>
+          Platform
+          <select value={filters.platform} onChange={(event) => setFilters({ ...filters, platform: event.target.value })}>
+            <option value="all">All platforms</option>
+            {platformOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+        </label>
+        <label>
+          License
+          <select value={filters.license} onChange={(event) => setFilters({ ...filters, license: event.target.value })}>
+            <option value="all">Any license</option>
+            <option value="licensed">Has license</option>
+            <option value="unlicensed">No license</option>
+          </select>
+        </label>
+        <label>
+          Business
+          <select value={filters.business} onChange={(event) => setFilters({ ...filters, business: event.target.value })}>
+            <option value="all">Any business</option>
+            <option value="linked">Business linked</option>
+            <option value="none">No business</option>
+          </select>
+        </label>
+        <label>
+          Trial
+          <select value={filters.trial} onChange={(event) => setFilters({ ...filters, trial: event.target.value })}>
+            <option value="all">Any trial</option>
+            <option value="active">Active trial</option>
+            <option value="expired">Trial ended</option>
+          </select>
+        </label>
+        <label>
+          Last seen
+          <select value={filters.lastSeen} onChange={(event) => setFilters({ ...filters, lastSeen: event.target.value })}>
+            <option value="all">Any time</option>
+            <option value="today">Last 24 hours</option>
+            <option value="week">Last 7 days</option>
+            <option value="stale">Stale 30+ days</option>
+          </select>
+        </label>
+        <label>
+          Sort
+          <select value={filters.sort} onChange={(event) => setFilters({ ...filters, sort: event.target.value })}>
+            <option value="recent">Recently seen</option>
+            <option value="first_seen">Newest install</option>
+            <option value="trial">Trial ending</option>
+            <option value="status">Status</option>
+            <option value="app">App version</option>
+          </select>
+        </label>
+        <button className="outline-button" type="button" onClick={clearFilters}>
+          <SlidersHorizontal size={18} />
+          Clear
+        </button>
+      </div>
+
+      <div className="admin-table-wrap">
+        {filteredDevices.length ? (
+          <table className="admin-data-table">
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>Status</th>
+                <th>App</th>
+                <th>Business</th>
+                <th>Licenses</th>
+                <th>Trial Ends</th>
+                <th>Last Seen</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDevices.map((device) => (
+                <tr key={device.deviceId} onClick={() => openDevice(device)} tabIndex={0} onKeyDown={(event) => event.key === 'Enter' && openDevice(device)}>
+                  <td>
+                    <strong>{device.deviceId}</strong>
+                    <span>{device.platform || 'android'}</span>
+                  </td>
+                  <td><span className={`license-status license-status-${device.status === 'licensed' || device.status === 'trial' ? 'active' : 'revoked'}`}>{device.status}</span></td>
+                  <td>
+                    <strong>{device.appVersion || 'unknown'}</strong>
+                    <span>{formatReviewDate(device.firstSeenAt)}</span>
+                  </td>
+                  <td>{device.business?.businessName || 'None'}</td>
+                  <td>{device.licenses.length}</td>
+                  <td>{formatDate(device.trialEndsAt)}</td>
+                  <td>{formatDate(device.lastSeenAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="license-empty">
+            <Smartphone aria-hidden="true" />
+            <p>No devices match the current filters.</p>
+          </div>
+        )}
+      </div>
+
+      <p className={`analytics-status analytics-status-${status}`}>
+        {status === 'loading' ? 'Refreshing devices' : null}
+        {status === 'ready' ? 'Devices up to date' : null}
+        {status === 'error' ? 'Device tools unavailable' : null}
+      </p>
+
+      {selectedFreshDevice && editForm ? (
+        <div className="admin-dialog-backdrop" role="presentation">
+          <div className="admin-dialog admin-dialog-wide" role="dialog" aria-modal="true" aria-labelledby="manage-device-title">
+            <div className="admin-dialog-header">
+              <div>
+                <p className="eyebrow">Installed device</p>
+                <h3 id="manage-device-title">{selectedFreshDevice.deviceId}</h3>
+              </div>
+              <button className="icon-button" type="button" onClick={() => setSelectedDevice(null)} aria-label="Close manage device dialog">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form className="admin-dialog-form admin-dialog-form-grid" onSubmit={handleUpdate}>
+              <label>
+                Device status
+                <select value={editForm.status} onChange={(event) => setEditForm({ ...editForm, status: event.target.value })}>
+                  {DEVICE_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                </select>
+              </label>
+              <button className="primary-button" type="submit">Save Device</button>
+            </form>
+
+            <div className="license-meta-grid">
+              <span>App <strong>{selectedFreshDevice.appVersion || 'unknown'}</strong></span>
+              <span>Platform <strong>{selectedFreshDevice.platform || 'android'}</strong></span>
+              <span>First seen <strong>{formatDate(selectedFreshDevice.firstSeenAt)}</strong></span>
+              <span>Last seen <strong>{formatDate(selectedFreshDevice.lastSeenAt)}</strong></span>
+              <span>Trial ends <strong>{formatDate(selectedFreshDevice.trialEndsAt)}</strong></span>
+            </div>
+
+            <div className="admin-dialog-lists">
+              <div className="activation-list">
+                <h4>Business</h4>
+                {selectedFreshDevice.business ? (
+                  <div className="activation-row">
+                    <div>
+                      <strong>{selectedFreshDevice.business.businessName}</strong>
+                      <span>{selectedFreshDevice.business.ownerName} - {selectedFreshDevice.business.email}</span>
+                    </div>
+                  </div>
+                ) : <p className="queue-empty">No linked business.</p>}
+              </div>
+
+              <div className="activation-list">
+                <h4>Licenses</h4>
+                {selectedFreshDevice.licenses.length ? selectedFreshDevice.licenses.map((license) => (
+                  <div className="activation-row" key={license.activationId}>
+                    <div>
+                      <strong>{license.licenseKey}</strong>
+                      <span>{license.plan} - {license.status} - checked {formatDate(license.lastCheckedAt)}</span>
+                    </div>
+                  </div>
+                )) : <p className="queue-empty">No activated licenses.</p>}
+              </div>
+            </div>
+
+            <div className="activation-list">
+              <h4>Payments</h4>
+              {selectedFreshDevice.payments.length ? selectedFreshDevice.payments.map((payment) => (
+                <div className="activation-row" key={payment.id}>
+                  <div>
+                    <strong>{formatMoney(payment.amount, payment.currency)} - {payment.status}</strong>
+                    <span>{payment.mode} - {formatDate(payment.created_at)}</span>
+                  </div>
+                </div>
+              )) : <p className="queue-empty">No payment sessions.</p>}
             </div>
           </div>
         </div>

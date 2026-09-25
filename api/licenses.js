@@ -5,6 +5,7 @@ const { hashPassword } = require('../server/_business-utils');
 const LICENSE_STATUSES = new Set(['active', 'revoked', 'refunded', 'expired']);
 const LICENSE_PLANS = new Set(['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus']);
 const BUSINESS_STATUSES = new Set(['active', 'suspended', 'closed']);
+const DEVICE_STATUSES = new Set(['trial', 'trial_expired', 'licensed', 'blocked']);
 
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
@@ -142,6 +143,33 @@ function normalizeBusiness(row) {
   };
 }
 
+function normalizeDevice(row, business, licenses = [], payments = []) {
+  return {
+    id: row.id,
+    deviceId: row.device_id,
+    businessId: row.business_id || null,
+    appVersion: row.app_version || '',
+    platform: row.platform || 'android',
+    status: row.status,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    trialStartedAt: row.trial_started_at,
+    trialEndsAt: row.trial_ends_at,
+    pairedAt: row.paired_at || null,
+    createdAt: row.created_at || row.first_seen_at,
+    updatedAt: row.updated_at || null,
+    business: business ? {
+      id: business.id,
+      businessName: business.business_name,
+      ownerName: business.owner_name,
+      email: business.email,
+      status: business.status
+    } : null,
+    licenses,
+    payments
+  };
+}
+
 function buildSummary(licenses, activationCount, deviceCount) {
   const statusCounts = licenses.reduce((counts, license) => {
     counts[license.status] = (counts[license.status] || 0) + 1;
@@ -251,6 +279,17 @@ async function listLicenses(supabase, response) {
     return;
   }
 
+  const { data: allDevices, error: allDevicesError } = await supabase
+    .from('devices')
+    .select('id, device_id, business_id, app_version, platform, status, first_seen_at, last_seen_at, trial_started_at, trial_ends_at, paired_at, created_at, updated_at')
+    .order('last_seen_at', { ascending: false })
+    .limit(500);
+
+  if (allDevicesError) {
+    sendJson(response, 500, { ok: false, status: 'all_devices_failed' });
+    return;
+  }
+
   const devicesByBusiness = new Map();
   (businessDevices || []).forEach((device) => {
     const rows = devicesByBusiness.get(device.business_id) || [];
@@ -259,10 +298,35 @@ async function listLicenses(supabase, response) {
   });
 
   const paymentsByBusiness = new Map();
+  const paymentsByDevice = new Map();
   (paymentSessions || []).forEach((payment) => {
     const rows = paymentsByBusiness.get(payment.business_id) || [];
     rows.push(payment);
     paymentsByBusiness.set(payment.business_id, rows);
+
+    const deviceRows = paymentsByDevice.get(payment.device_id) || [];
+    deviceRows.push(payment);
+    paymentsByDevice.set(payment.device_id, deviceRows);
+  });
+
+  const businessesById = new Map((businesses || []).map((business) => [business.id, business]));
+  const licensesById = new Map((licenses || []).map((license) => [license.id, license]));
+  const licenseRowsByDevice = new Map();
+  (activations || []).forEach((activation) => {
+    const license = licensesById.get(activation.license_id);
+    if (!license) return;
+    const rows = licenseRowsByDevice.get(activation.device_id) || [];
+    rows.push({
+      activationId: activation.id,
+      licenseId: license.id,
+      licenseKey: license.license_key,
+      plan: license.plan,
+      status: license.status,
+      activatedAt: activation.activated_at,
+      lastCheckedAt: activation.last_checked_at,
+      expiresAt: license.expires_at
+    });
+    licenseRowsByDevice.set(activation.device_id, rows);
   });
 
   const normalizedBusinesses = (businesses || []).map((business) => {
@@ -291,6 +355,12 @@ async function listLicenses(supabase, response) {
     status: 'ready',
     summary: buildSummary(licenses || [], (activations || []).length, deviceCount || 0),
     licenses: (licenses || []).map((license) => normalizeLicense(license, activationsByLicense.get(license.id) || [])),
+    devices: (allDevices || []).map((device) => normalizeDevice(
+      device,
+      businessesById.get(device.business_id),
+      licenseRowsByDevice.get(device.device_id) || [],
+      paymentsByDevice.get(device.device_id) || []
+    )),
     businesses: normalizedBusinesses,
     paymentSessions: paymentSessions || []
   });
@@ -440,6 +510,11 @@ async function updateLicense(supabase, request, response) {
     return;
   }
 
+  if (action === 'update_device') {
+    await updateDevice(supabase, body, response);
+    return;
+  }
+
   if (action === 'unbind_device') {
     const activationId = getText(body, 'activationId', 'activation_id');
 
@@ -534,6 +609,39 @@ async function updateLicense(supabase, request, response) {
     ok: true,
     status: 'updated',
     license: normalizeLicense(data)
+  });
+}
+
+async function updateDevice(supabase, body, response) {
+  const deviceId = getText(body, 'deviceId', 'device_id');
+  const status = getText(body, 'status');
+
+  if (deviceId.length < 3 || deviceId.length > 200) {
+    sendJson(response, 400, { ok: false, status: 'invalid_device_id' });
+    return;
+  }
+
+  if (!DEVICE_STATUSES.has(status)) {
+    sendJson(response, 400, { ok: false, status: 'invalid_device_status' });
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from('devices')
+    .update({ status })
+    .eq('device_id', deviceId)
+    .select('id, device_id, business_id, app_version, platform, status, first_seen_at, last_seen_at, trial_started_at, trial_ends_at, paired_at, created_at, updated_at')
+    .single();
+
+  if (error) {
+    sendJson(response, 500, { ok: false, status: 'device_update_failed' });
+    return;
+  }
+
+  sendJson(response, 200, {
+    ok: true,
+    status: 'device_updated',
+    device: normalizeDevice(data, null)
   });
 }
 
