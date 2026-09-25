@@ -76,69 +76,82 @@ const HOME_LICENSE_PLAN_FALLBACK = [
 ];
 const appVersions = [
   {
-    versionName: '0.2.19',
-    versionCode: 30,
+    versionName: '0.2.36',
+    versionCode: 47,
     label: 'Latest release',
     date: 'September 2026',
-    summary: 'Receiptbooth, receipt layout admin, license tab, Epson L3210 printing, and admin cleanup updates.',
+    summary: 'Coin reader payments, retry controls, reprint placement, branding controls, 80mm thermal printing, and admin security updates.',
     sections: [
       {
-        title: 'Receiptbooth',
+        title: 'Coin Reader',
         items: [
-          'Improved Step 1 template layout',
-          'Added split template view on landscape with template list on the left and a bigger selected preview on the right',
-          'Hid selected template preview in portrait mode',
-          'Fixed portrait scroll jumping when selecting templates and using Show More',
-          'Improved Step 2 print copy controls',
-          'Made receipt copy - / + float in portrait mode',
-          'Added max receipt print copies per session in Admin -> Receipt Layout',
-          'Hid photobooth/receiptbooth template previews when admin template is locked',
-          'Locked admin template now skips customer template steps: Photobooth skips Step 2 and Receiptbooth skips Step 1'
+          'Added Bluetooth coin reader support for PhotoTags-Coin',
+          'Added Admin > Coin Reader tab',
+          'Added auto permission/connect setting',
+          'Added manual connect/disconnect',
+          'Added reset total and clear logs',
+          'Added Admin > Payments switch: Accept coin reader payments',
+          'Added coin paywall for Photobooth, ID Photo, and Receiptbooth using Admin payment prices',
+          'Improved coin paywall design and warning text'
         ]
       },
       {
-        title: 'Receipt Layout Admin',
+        title: 'Payment Flow',
         items: [
-          'Added new Receipt Layout admin tab',
-          'Added custom receipt template editor',
-          'Admin can upload background image',
-          'Admin can set number of photo frames',
-          'Admin can move/resize frames',
-          'Added print guide lines',
-          'Added cute stickers',
-          'Added text and text color selection',
-          'Added undo/redo overlay',
-          'Cute icons now open like the photobooth layout editor',
-          'Lock to admin template works for receiptbooth'
+          'Receiptbooth coin paywall appears after choosing receipt template',
+          'ID Photo coin paywall appears after New Session',
+          'Photobooth coin paywall appears after Start New Session',
+          'Added warning dialogs when leaving/canceling paid coin sessions',
+          'Added exact amount / no change / no refund messaging'
         ]
       },
       {
-        title: 'Photobooth / Admin Layout',
+        title: 'Retry / Retake',
         items: [
-          'Renamed Admin Layout tab to Photobooth Layout',
-          'Added separate License admin tab',
-          'Moved license activation/check UI into the License tab',
-          'Business dashboard/account pairing is disabled unless the app license is active'
+          'Changed Back button to Retry on Photobooth and Receiptbooth decorate/sign pages',
+          'Added Admin > Session retry limit setting',
+          'Retry button now shows remaining retries, like Retry (1 left)',
+          'Retry retakes photos without charging again'
         ]
       },
       {
-        title: 'Printing',
+        title: 'Admin / Reprint',
         items: [
-          'Added/fixed Epson L3210 support',
-          'Fixed image printing that previously printed ASCII or blank/ejected paper',
-          'Made Epson L3210 photobooth printing default to 4R borderless',
-          'Improved print queue behavior so printing continues even if another user starts a new session',
-          'Fixed white margin/borderless behavior workaround for L3210',
-          'Updated latest APK and version.json into the website project'
+          'Added + reprint button near the Admin/wrench area',
+          'Removed floating + reprint button from the main page',
+          'Added Admin > Session switch to show/hide the main page reprint button'
         ]
       },
       {
-        title: 'Admin / UI Cleanup',
+        title: 'Branding',
         items: [
-          'Removed hidden printer tools opening from the upper-right status tap',
-          'Hid receipt copy - / + controls inside Admin',
-          'Added separate License tab',
-          'Kept manual Check License button'
+          'Fixed transparent PNG/GIF logo support',
+          'Added animated GIF support for landing background',
+          'Added separate text color controls for business name',
+          'Added separate text color controls for tagline'
+        ]
+      },
+      {
+        title: 'Receiptbooth / Printers',
+        items: [
+          'Added new printer option: ESC/POS 80mm Thermal',
+          '48mm Deli still uses 384-dot layout',
+          '80mm uses 576-dot layout',
+          'Receiptbooth print layout now adjusts for 80mm paper',
+          'Receipt custom admin layout editor adjusts based on selected receipt paper size',
+          'Reduced top white space on 80mm receipt printouts',
+          'Added 80mm thermal picture test in Admin tools'
+        ]
+      },
+      {
+        title: 'Admin Security',
+        items: [
+          'Fresh install now shows Admin button by default',
+          'Fresh install no longer requires Admin PIN by default',
+          'Added Admin > Security switch: Show Admin button on main page',
+          'Added Admin > Security switch: Require Admin PIN',
+          'If Admin button is hidden, the 5-second top-right long press can reveal it temporarily',
+          'PIN dialog only appears when Require Admin PIN is ON'
         ]
       }
     ]
