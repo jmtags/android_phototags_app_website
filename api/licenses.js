@@ -7,6 +7,16 @@ const LICENSE_PLANS = new Set(['weekly', 'monthly', 'lifetime', 'starter', 'pro'
 const BUSINESS_STATUSES = new Set(['active', 'suspended', 'closed']);
 const DEVICE_STATUSES = new Set(['trial', 'trial_expired', 'licensed', 'blocked']);
 
+function isPastDate(value) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time <= Date.now();
+}
+
+function hasActiveLicenseRows(licenses) {
+  return licenses.some((license) => license.status === 'active' && !isPastDate(license.expiresAt));
+}
+
 function sendJson(response, statusCode, body) {
   response.statusCode = statusCode;
   response.setHeader('Content-Type', 'application/json');
@@ -144,13 +154,22 @@ function normalizeBusiness(row) {
 }
 
 function normalizeDevice(row, business, licenses = [], payments = []) {
+  const effectiveStatus = row.status === 'blocked'
+    ? 'blocked'
+    : hasActiveLicenseRows(licenses)
+      ? 'licensed'
+      : isPastDate(row.trial_ends_at)
+        ? 'trial_expired'
+        : row.status;
+
   return {
     id: row.id,
     deviceId: row.device_id,
     businessId: row.business_id || null,
     appVersion: row.app_version || '',
     platform: row.platform || 'android',
-    status: row.status,
+    status: effectiveStatus,
+    storedStatus: row.status,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at,
     trialStartedAt: row.trial_started_at,
@@ -328,6 +347,26 @@ async function listLicenses(supabase, response) {
     });
     licenseRowsByDevice.set(activation.device_id, rows);
   });
+
+  const expiredTrialDeviceIds = (allDevices || [])
+    .filter((device) => (
+      device.status === 'trial'
+      && isPastDate(device.trial_ends_at)
+      && !hasActiveLicenseRows(licenseRowsByDevice.get(device.device_id) || [])
+    ))
+    .map((device) => device.device_id);
+
+  if (expiredTrialDeviceIds.length) {
+    const { error: expireDevicesError } = await supabase
+      .from('devices')
+      .update({ status: 'trial_expired' })
+      .in('device_id', expiredTrialDeviceIds);
+
+    if (expireDevicesError) {
+      sendJson(response, 500, { ok: false, status: 'device_expiry_refresh_failed' });
+      return;
+    }
+  }
 
   const normalizedBusinesses = (businesses || []).map((business) => {
     const settings = Array.isArray(business.business_payment_settings)

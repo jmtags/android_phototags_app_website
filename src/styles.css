@@ -1633,13 +1633,17 @@ button:disabled {
   font-weight: 830;
 }
 
-.license-status-active {
+.license-status-active,
+.license-status-licensed,
+.license-status-trial {
   color: #00d887;
 }
 
 .license-status-revoked,
 .license-status-refunded,
-.license-status-expired {
+.license-status-expired,
+.license-status-trial_expired,
+.license-status-blocked {
   color: #ff4c8d;
 }
 

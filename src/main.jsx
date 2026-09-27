@@ -69,6 +69,24 @@ const BUSINESS_FORM_INITIAL = {
 };
 const BUSINESS_STATUS_OPTIONS = ['active', 'suspended', 'closed'];
 const DEVICE_STATUS_OPTIONS = ['trial', 'trial_expired', 'licensed', 'blocked'];
+
+function isPastDate(value) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time <= Date.now();
+}
+
+function hasActiveDeviceLicense(device) {
+  return (device.licenses || []).some((license) => license.status === 'active' && !isPastDate(license.expiresAt));
+}
+
+function getDeviceEffectiveStatus(device) {
+  if (device.status === 'blocked') return 'blocked';
+  if (hasActiveDeviceLicense(device)) return 'licensed';
+  if (isPastDate(device.trialEndsAt)) return 'trial_expired';
+  return device.status || 'trial';
+}
+
 const HOME_LICENSE_PLAN_FALLBACK = [
   { id: 'weekly', name: 'Weekly', amount: 15000, currency: 'PHP' },
   { id: 'monthly', name: 'Monthly', amount: 30000, currency: 'PHP' },
@@ -76,9 +94,26 @@ const HOME_LICENSE_PLAN_FALLBACK = [
 ];
 const appVersions = [
   {
+    versionName: '0.2.46',
+    versionCode: 57,
+    label: 'Latest release',
+    date: 'September 2026',
+    summary: 'Tightened trial expiry enforcement and fixed admin device filtering for expired trials.',
+    sections: [
+      {
+        title: 'Licensing',
+        items: [
+          'Expired trials are blocked using the saved trial end date',
+          'Admin device search and status filters now count expired trials correctly',
+          'Admin device refresh updates stale trial rows when their trial period has ended'
+        ]
+      }
+    ]
+  },
+  {
     versionName: '0.2.36',
     versionCode: 47,
-    label: 'Latest release',
+    label: 'Previous release',
     date: 'September 2026',
     summary: 'Coin reader payments, retry controls, reprint placement, branding controls, 80mm thermal printing, and admin security updates.',
     sections: [
@@ -3114,13 +3149,20 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
     () => Array.from(new Set(devices.map((device) => device.appVersion || 'unknown'))).sort(),
     [devices]
   );
+  const effectiveDevices = useMemo(
+    () => devices.map((device) => ({
+      ...device,
+      effectiveStatus: getDeviceEffectiveStatus(device)
+    })),
+    [devices]
+  );
 
   const filteredDevices = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
     const now = Date.now();
     const dayMs = 24 * 60 * 60 * 1000;
 
-    return devices
+    return effectiveDevices
       .filter((device) => {
         const lastSeenTime = device.lastSeenAt ? new Date(device.lastSeenAt).getTime() : 0;
         const trialEndsTime = device.trialEndsAt ? new Date(device.trialEndsAt).getTime() : null;
@@ -3128,7 +3170,8 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
         const hasBusiness = Boolean(device.business);
         const text = [
           device.deviceId,
-          device.status,
+          device.effectiveStatus,
+          device.effectiveStatus.replaceAll('_', ' '),
           device.platform,
           device.appVersion,
           device.business?.businessName,
@@ -3137,7 +3180,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
         ].join(' ').toLowerCase();
 
         if (query && !text.includes(query)) return false;
-        if (filters.status !== 'all' && device.status !== filters.status) return false;
+        if (filters.status !== 'all' && device.effectiveStatus !== filters.status) return false;
         if (filters.platform !== 'all' && (device.platform || 'android') !== filters.platform) return false;
         if (filters.version !== 'all' && (device.appVersion || 'unknown') !== filters.version) return false;
         if (filters.license === 'licensed' && !hasLicenses) return false;
@@ -3160,22 +3203,23 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
           const secondTime = second.trialEndsAt ? new Date(second.trialEndsAt).getTime() : Number.MAX_SAFE_INTEGER;
           return firstTime - secondTime;
         }
-        if (filters.sort === 'status') return first.status.localeCompare(second.status);
+        if (filters.sort === 'status') return first.effectiveStatus.localeCompare(second.effectiveStatus);
         if (filters.sort === 'app') return (first.appVersion || '').localeCompare(second.appVersion || '');
         return new Date(second.lastSeenAt || 0).getTime() - new Date(first.lastSeenAt || 0).getTime();
       });
-  }, [devices, filters]);
+  }, [effectiveDevices, filters]);
 
   const filteredDeviceStats = useMemo(() => ({
     matched: filteredDevices.length,
-    licensed: filteredDevices.filter((device) => device.status === 'licensed').length,
-    trials: filteredDevices.filter((device) => device.status === 'trial').length,
-    blocked: filteredDevices.filter((device) => device.status === 'blocked').length,
+    licensed: filteredDevices.filter((device) => device.effectiveStatus === 'licensed').length,
+    trials: filteredDevices.filter((device) => device.effectiveStatus === 'trial').length,
+    expiredTrials: filteredDevices.filter((device) => device.effectiveStatus === 'trial_expired').length,
+    blocked: filteredDevices.filter((device) => device.effectiveStatus === 'blocked').length,
     businessLinked: filteredDevices.filter((device) => device.business).length
   }), [filteredDevices]);
 
   const selectedFreshDevice = selectedDevice
-    ? devices.find((device) => device.deviceId === selectedDevice.deviceId) || selectedDevice
+    ? effectiveDevices.find((device) => device.deviceId === selectedDevice.deviceId) || selectedDevice
     : null;
 
   const openDevice = (device) => {
@@ -3219,10 +3263,10 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
       <div className="license-summary-grid">
         {[
           ['Total devices', devices.length],
-          ['Licensed', devices.filter((device) => device.status === 'licensed').length],
-          ['Trials', devices.filter((device) => device.status === 'trial').length],
-          ['Expired trials', devices.filter((device) => device.status === 'trial_expired').length],
-          ['Blocked', devices.filter((device) => device.status === 'blocked').length],
+          ['Licensed', effectiveDevices.filter((device) => device.effectiveStatus === 'licensed').length],
+          ['Trials', effectiveDevices.filter((device) => device.effectiveStatus === 'trial').length],
+          ['Expired trials', effectiveDevices.filter((device) => device.effectiveStatus === 'trial_expired').length],
+          ['Blocked', effectiveDevices.filter((device) => device.effectiveStatus === 'blocked').length],
           ['Business linked', devices.filter((device) => device.business).length]
         ].map(([label, value]) => (
           <div className="license-summary-item" key={label}>
@@ -3319,6 +3363,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
           ['Matched', filteredDeviceStats.matched],
           ['Licensed', filteredDeviceStats.licensed],
           ['Trials', filteredDeviceStats.trials],
+          ['Expired trials', filteredDeviceStats.expiredTrials],
           ['Blocked', filteredDeviceStats.blocked],
           ['Business linked', filteredDeviceStats.businessLinked]
         ].map(([label, value]) => (
@@ -3347,7 +3392,7 @@ function AdminDevicesSection({ devices, message, status, onRefresh, onUpdateDevi
                     <strong>{device.deviceId}</strong>
                     <span>{device.platform || 'android'}</span>
                   </td>
-                  <td><span className={`license-status license-status-${device.status === 'licensed' || device.status === 'trial' ? 'active' : 'revoked'}`}>{device.status}</span></td>
+                  <td><span className={`license-status license-status-${device.effectiveStatus}`}>{device.effectiveStatus}</span></td>
                   <td>
                     <strong>{device.appVersion || 'unknown'}</strong>
                     <span>{formatReviewDate(device.firstSeenAt)}</span>
