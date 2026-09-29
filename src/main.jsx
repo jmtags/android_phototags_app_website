@@ -87,29 +87,24 @@ function getDeviceEffectiveStatus(device) {
   return device.status || 'trial';
 }
 
+function getCheckoutErrorMessage(status) {
+  const messages = {
+    license_payment_schema_outdated: 'Payment setup needs a database update. Please contact support with code license_payment_schema_outdated.',
+    license_payment_plan_constraint_outdated: 'Payment setup needs a pricing database update. Please contact support with code license_payment_plan_constraint_outdated.',
+    license_payment_table_missing: 'Payment setup is not ready yet. Please contact support with code license_payment_table_missing.',
+    payment_session_save_failed: 'Payment session could not be saved. Please try again or contact support.',
+    payment_session_update_failed: 'Payment session could not be updated. Please try again or contact support.'
+  };
+
+  return messages[status] || status || 'Please try again.';
+}
+
 const HOME_LICENSE_PLAN_FALLBACK = [
   { id: 'weekly', name: 'Weekly', amount: 15000, currency: 'PHP' },
   { id: 'monthly', name: 'Monthly', amount: 30000, currency: 'PHP' },
   { id: 'lifetime', name: 'Lifetime', amount: 100000, currency: 'PHP' }
 ];
 const appVersions = [
-  {
-    versionName: '0.2.46',
-    versionCode: 57,
-    label: 'Latest release',
-    date: 'September 2026',
-    summary: 'Tightened trial expiry enforcement and fixed admin device filtering for expired trials.',
-    sections: [
-      {
-        title: 'Licensing',
-        items: [
-          'Expired trials are blocked using the saved trial end date',
-          'Admin device search and status filters now count expired trials correctly',
-          'Admin device refresh updates stale trial rows when their trial period has ended'
-        ]
-      }
-    ]
-  },
   {
     versionName: '0.2.36',
     versionCode: 47,
@@ -1250,7 +1245,7 @@ function ActivationPage() {
           return;
         }
 
-        if (attempts < 20) {
+        if (attempts < 60) {
           window.setTimeout(pollPayment, 3000);
         } else {
           setStatus('ready');
@@ -1314,7 +1309,7 @@ function ActivationPage() {
 
       if (!response.ok || !payload.ok || !payload.checkoutUrl) {
         const providerDetail = payload.providerErrors?.map((error) => error.detail || error.code).filter(Boolean).join(' ');
-        throw new Error(providerDetail || payload.status || 'checkout_failed');
+        throw new Error(providerDetail || getCheckoutErrorMessage(payload.status || 'checkout_failed'));
       }
 
       window.location.href = payload.checkoutUrl;

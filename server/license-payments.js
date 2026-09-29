@@ -54,28 +54,6 @@ async function paymongoV2Request(secretKey, path, options = {}) {
   return payload;
 }
 
-async function paymongoV1Request(secretKey, path, options = {}) {
-  const response = await fetch(`https://api.paymongo.com/v1${path}`, {
-    method: options.method || 'GET',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
-    },
-    body: options.body ? JSON.stringify(options.body) : undefined
-  });
-  const payload = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error('paymongo_request_failed');
-    error.statusCode = response.status;
-    error.payload = payload;
-    throw error;
-  }
-
-  return payload;
-}
-
 function getPaymongoErrorSummary(payload) {
   const errors = Array.isArray(payload?.errors) ? payload.errors : [];
 
@@ -90,6 +68,25 @@ function getPaymongoErrorSummary(payload) {
       detail: cleanText(error.detail, 240) || null,
       source: cleanText(error.source?.pointer || error.source?.attribute, 120) || null
     }));
+}
+
+function getSupabaseWriteErrorStatus(error, fallbackStatus) {
+  const message = String(error?.message || error?.details || error?.hint || '').toLowerCase();
+  const code = String(error?.code || '');
+
+  if (code === '42703' || message.includes('agreement_')) {
+    return 'license_payment_schema_outdated';
+  }
+
+  if (code === '23514' && message.includes('license_payment_sessions_plan')) {
+    return 'license_payment_plan_constraint_outdated';
+  }
+
+  if (code === '42P01' || message.includes('license_payment_sessions')) {
+    return 'license_payment_table_missing';
+  }
+
+  return fallbackStatus;
 }
 
 function normalizePlan(plan) {
@@ -122,10 +119,11 @@ function isCheckoutPaid(checkoutPayload) {
   const payments = Array.isArray(attributes.payments) ? attributes.payments : [];
   const intent = attributes.payment_intent?.attributes || {};
   const intentPayments = Array.isArray(intent.payments) ? intent.payments : [];
+  const rawStatus = String(attributes.status || intent.status || '').toLowerCase();
 
-  return intent.status === 'succeeded'
-    || payments.some((payment) => payment?.attributes?.status === 'paid')
-    || intentPayments.some((payment) => payment?.attributes?.status === 'paid');
+  return ['paid', 'succeeded'].includes(rawStatus)
+    || payments.some((payment) => ['paid', 'succeeded'].includes(String(payment?.attributes?.status || '').toLowerCase()))
+    || intentPayments.some((payment) => ['paid', 'succeeded'].includes(String(payment?.attributes?.status || '').toLowerCase()));
 }
 
 async function createLicenseWithRetry(supabase, session, plan) {
@@ -415,7 +413,15 @@ async function createCheckout(request, response) {
     .single();
 
   if (insertError) {
-    sendJson(response, 500, { ok: false, status: 'payment_session_save_failed' });
+    const status = getSupabaseWriteErrorStatus(insertError, 'payment_session_save_failed');
+    console.error('License payment session insert failed', {
+      status,
+      code: insertError.code,
+      message: insertError.message,
+      details: insertError.details,
+      hint: insertError.hint
+    });
+    sendJson(response, 500, { ok: false, status });
     return;
   }
 
@@ -492,7 +498,15 @@ async function createCheckout(request, response) {
     .eq('id', session.id);
 
   if (updateError) {
-    sendJson(response, 500, { ok: false, status: 'payment_session_update_failed' });
+    const status = getSupabaseWriteErrorStatus(updateError, 'payment_session_update_failed');
+    console.error('License payment session update failed', {
+      status,
+      code: updateError.code,
+      message: updateError.message,
+      details: updateError.details,
+      hint: updateError.hint
+    });
+    sendJson(response, 500, { ok: false, status });
     return;
   }
 
@@ -559,7 +573,7 @@ async function checkStatus(request, response) {
 
   if (status === 'pending' && secretKey && currentSession.paymongo_checkout_session_id) {
     try {
-      const checkout = await paymongoV1Request(secretKey, `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`);
+      const checkout = await paymongoV2Request(secretKey, `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`);
 
       if (isCheckoutPaid(checkout)) {
         currentSession = await fulfillPaidSession(supabase, currentSession, checkout);

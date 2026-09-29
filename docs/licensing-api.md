@@ -86,6 +86,8 @@ Current launch pricing is served by `GET /api/license/plans`:
 
 Backend pricing changes are stored in Supabase table `public.license_plan_settings`. You can edit price, duration, device count, and active status from the admin Licenses page. You can also update `amount` in centavos, `duration_days`, `max_devices`, `features`, or `active` directly in Supabase; the checkout page and admin package cards will read the updated values.
 
+For one-time setup or production catch-up, run `supabase/one_time_supabase_setup.sql` in the Supabase SQL Editor. Whenever a new SQL file is added under `supabase/migrations`, append it to that one-time setup script in chronological order.
+
 Example price update:
 
 ```sql

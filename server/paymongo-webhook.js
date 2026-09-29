@@ -31,8 +31,27 @@ function verifyWebhook(request, rawBody) {
     return false;
   }
 
-  const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  return signature.includes(expected);
+  const parts = signature.split(',').reduce((values, part) => {
+    const [key, ...rest] = part.trim().split('=');
+    if (key) {
+      values[key] = rest.join('=');
+    }
+    return values;
+  }, {});
+  const timestamp = parts.t || '';
+  const providedSignatures = [parts.li, parts.te, signature].filter(Boolean);
+  const signedPayloads = timestamp ? [`${timestamp}.${rawBody}`, rawBody] : [rawBody];
+
+  return signedPayloads.some((payload) => {
+    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+
+    return providedSignatures.some((provided) => {
+      const expectedBuffer = Buffer.from(expected);
+      const providedBuffer = Buffer.from(provided);
+      return expectedBuffer.length === providedBuffer.length
+        && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
+    });
+  });
 }
 
 function mapStatus(eventType, payload) {
@@ -220,6 +239,7 @@ module.exports = async function handler(request, response) {
   const status = mapStatus(eventType, checkoutSession || payload);
 
   if (!paymongoId || !status) {
+    console.warn('PayMongo webhook ignored', { eventType, paymongoId: paymongoId || null, status: status || null });
     sendJson(response, 200, { ok: true, status: 'ignored' });
     return;
   }
@@ -256,5 +276,6 @@ module.exports = async function handler(request, response) {
     return;
   }
 
+  console.warn('PayMongo webhook did not match a license payment session', { eventType, paymongoId, status });
   sendJson(response, 200, { ok: true, status: 'updated' });
 };
