@@ -92,6 +92,10 @@ function generateLicenseKey() {
   return `PT-PRO-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
 }
 
+function addDays(days) {
+  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function generateBusinessPassword() {
   return randomBytes(12).toString('base64url');
 }
@@ -420,6 +424,11 @@ async function createLicense(supabase, request, response) {
     return;
   }
 
+  if (getText(body, 'action') === 'grant_device_license') {
+    await grantDeviceLicense(supabase, body, response);
+    return;
+  }
+
   const licenseKey = getText(body, 'licenseKey', 'license_key') || generateLicenseKey();
   const plan = getText(body, 'plan') || 'monthly';
   const status = getText(body, 'status') || 'active';
@@ -467,6 +476,122 @@ async function createLicense(supabase, request, response) {
     ok: true,
     status: 'created',
     license: normalizeLicense(data)
+  });
+}
+
+async function getPlanDefaults(supabase, plan) {
+  const { data } = await supabase
+    .from('license_plan_settings')
+    .select('duration_days, max_devices')
+    .eq('id', plan)
+    .maybeSingle();
+
+  return {
+    durationDays: data?.duration_days ?? null,
+    maxDevices: Number(data?.max_devices || 1)
+  };
+}
+
+async function grantDeviceLicense(supabase, body, response) {
+  const deviceId = getText(body, 'deviceId', 'device_id');
+  const plan = getText(body, 'plan') || 'monthly';
+  const customerEmail = getText(body, 'customerEmail', 'customer_email') || null;
+  const paymentReference = getText(body, 'paymentReference', 'payment_reference') || `admin-device-${deviceId}`;
+  const requestedExpiresAt = getNullableDate(body, 'expiresAt', 'expires_at');
+
+  if (deviceId.length < 3 || deviceId.length > 200) {
+    sendJson(response, 400, { ok: false, status: 'invalid_device_id' });
+    return;
+  }
+
+  if (!LICENSE_PLANS.has(plan)) {
+    sendJson(response, 400, { ok: false, status: 'invalid_plan' });
+    return;
+  }
+
+  if (requestedExpiresAt === undefined) {
+    sendJson(response, 400, { ok: false, status: 'invalid_expires_at' });
+    return;
+  }
+
+  const { data: activeRows, error: activeError } = await supabase
+    .from('license_activations')
+    .select('license_id, licenses(id, license_key, plan, status, max_devices, created_at, activated_at, expires_at, customer_email, payment_reference)')
+    .eq('device_id', deviceId);
+
+  if (activeError) {
+    sendJson(response, 500, { ok: false, status: 'active_license_check_failed' });
+    return;
+  }
+
+  const activeLicense = (activeRows || [])
+    .map((row) => row.licenses)
+    .find((license) => license?.status === 'active' && !isPastDate(license.expires_at));
+
+  if (activeLicense) {
+    sendJson(response, 200, {
+      ok: true,
+      status: 'device_already_licensed',
+      license: normalizeLicense(activeLicense)
+    });
+    return;
+  }
+
+  const planDefaults = await getPlanDefaults(supabase, plan);
+  const expiresAt = requestedExpiresAt ?? (planDefaults.durationDays ? addDays(planDefaults.durationDays) : null);
+
+  const { error: deviceError } = await supabase
+    .from('devices')
+    .upsert({
+      device_id: deviceId,
+      platform: 'android',
+      status: 'licensed',
+      last_seen_at: new Date().toISOString()
+    }, { onConflict: 'device_id' });
+
+  if (deviceError) {
+    sendJson(response, 500, { ok: false, status: 'device_save_failed' });
+    return;
+  }
+
+  const { data: license, error: licenseError } = await supabase
+    .from('licenses')
+    .insert({
+      license_key: generateLicenseKey(),
+      plan,
+      status: 'active',
+      max_devices: Math.max(planDefaults.maxDevices, 1),
+      activated_at: new Date().toISOString(),
+      expires_at: expiresAt,
+      customer_email: customerEmail,
+      payment_reference: paymentReference
+    })
+    .select('id, license_key, plan, status, max_devices, created_at, activated_at, expires_at, customer_email, payment_reference')
+    .single();
+
+  if (licenseError) {
+    sendJson(response, 500, { ok: false, status: 'license_create_failed' });
+    return;
+  }
+
+  const { error: activationError } = await supabase
+    .from('license_activations')
+    .insert({
+      license_id: license.id,
+      device_id: deviceId,
+      last_checked_at: new Date().toISOString()
+    });
+
+  if (activationError) {
+    await supabase.from('licenses').delete().eq('id', license.id);
+    sendJson(response, 500, { ok: false, status: 'activation_create_failed' });
+    return;
+  }
+
+  sendJson(response, 201, {
+    ok: true,
+    status: 'device_license_granted',
+    license: normalizeLicense(license)
   });
 }
 

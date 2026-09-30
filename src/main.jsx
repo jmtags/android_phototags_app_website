@@ -58,6 +58,13 @@ const LICENSE_FORM_INITIAL = {
   maxDevices: 1,
   expiresAt: ''
 };
+const DEVICE_LICENSE_FORM_INITIAL = {
+  deviceId: '',
+  plan: 'monthly',
+  customerEmail: '',
+  paymentReference: '',
+  expiresAt: ''
+};
 const LICENSE_STATUS_OPTIONS = ['active', 'revoked', 'refunded', 'expired'];
 const LICENSE_PLAN_OPTIONS = ['weekly', 'monthly', 'lifetime', 'starter', 'pro', 'business', 'pro_lifetime', 'pro_plus'];
 const BUSINESS_FORM_INITIAL = {
@@ -1878,6 +1885,7 @@ function AdminPage() {
   });
   const [licensePlans, setLicensePlans] = useState([]);
   const [licenseForm, setLicenseForm] = useState(LICENSE_FORM_INITIAL);
+  const [deviceLicenseForm, setDeviceLicenseForm] = useState(DEVICE_LICENSE_FORM_INITIAL);
   const [businessForm, setBusinessForm] = useState(BUSINESS_FORM_INITIAL);
   const [activeAdminSection, setActiveAdminSection] = useState('overview');
 
@@ -2094,6 +2102,41 @@ function AdminPage() {
     } catch (error) {
       setLicenseStatus('error');
       setLicenseMessage(`Could not create license${error.message ? `: ${error.message}` : ''}.`);
+    }
+  };
+
+  const grantDeviceLicense = async (event) => {
+    event.preventDefault();
+    setLicenseStatus('loading');
+    setLicenseMessage('');
+
+    try {
+      const response = await fetch('/api/licenses', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Admin-Password': adminPassword
+        },
+        body: JSON.stringify({
+          action: 'grant_device_license',
+          ...deviceLicenseForm,
+          expiresAt: deviceLicenseForm.expiresAt || null
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.status || 'Device license grant failed');
+      }
+
+      setDeviceLicenseForm(DEVICE_LICENSE_FORM_INITIAL);
+      setLicenseMessage(payload.status === 'device_already_licensed'
+        ? `Device already has active license ${payload.license.licenseKey}`
+        : `Activated ${payload.license.licenseKey} for device.`);
+      await refreshLicenses();
+    } catch (error) {
+      setLicenseStatus('error');
+      setLicenseMessage(`Could not activate device${error.message ? `: ${error.message}` : ''}.`);
     }
   };
 
@@ -2379,12 +2422,15 @@ function AdminPage() {
       return (
         <AdminLicensesSection
           data={licenseData}
+          deviceLicenseForm={deviceLicenseForm}
           form={licenseForm}
           message={licenseMessage}
           plans={licensePlans}
           status={licenseStatus}
           onCreate={createLicense}
+          onDeviceLicenseFormChange={setDeviceLicenseForm}
           onFormChange={setLicenseForm}
+          onGrantDeviceLicense={grantDeviceLicense}
           onRefresh={refreshLicenses}
           onUpdatePlan={updateLicensePlan}
           onUnbindActivation={unbindActivation}
@@ -2596,12 +2642,15 @@ function LocationList({ title, locations }) {
 
 function AdminLicensesSection({
   data,
+  deviceLicenseForm,
   form,
   message,
   plans,
   status,
   onCreate,
+  onDeviceLicenseFormChange,
   onFormChange,
+  onGrantDeviceLicense,
   onRefresh,
   onUpdatePlan,
   onUnbindActivation,
@@ -2861,6 +2910,62 @@ function AdminLicensesSection({
           </article>
         )}
       </div>
+
+      <form className="device-license-grant" onSubmit={onGrantDeviceLicense}>
+        <div className="license-form-title">
+          <Smartphone size={20} />
+          <div>
+            <h3>Activate Device</h3>
+            <p>Enter a device ID to create and bind an active license.</p>
+          </div>
+        </div>
+        <label>
+          Device ID
+          <input
+            required
+            value={deviceLicenseForm.deviceId}
+            onChange={(event) => onDeviceLicenseFormChange({ ...deviceLicenseForm, deviceId: event.target.value })}
+            placeholder="Paste Android device ID"
+          />
+        </label>
+        <label>
+          Plan
+          <select
+            value={deviceLicenseForm.plan}
+            onChange={(event) => onDeviceLicenseFormChange({ ...deviceLicenseForm, plan: event.target.value })}
+          >
+            {LICENSE_PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+          </select>
+        </label>
+        <label>
+          Customer email
+          <input
+            type="email"
+            value={deviceLicenseForm.customerEmail}
+            onChange={(event) => onDeviceLicenseFormChange({ ...deviceLicenseForm, customerEmail: event.target.value })}
+          />
+        </label>
+        <label>
+          Payment reference
+          <input
+            value={deviceLicenseForm.paymentReference}
+            onChange={(event) => onDeviceLicenseFormChange({ ...deviceLicenseForm, paymentReference: event.target.value })}
+            placeholder="Optional"
+          />
+        </label>
+        <label>
+          Expires at
+          <input
+            type="datetime-local"
+            value={deviceLicenseForm.expiresAt}
+            onChange={(event) => onDeviceLicenseFormChange({ ...deviceLicenseForm, expiresAt: event.target.value })}
+          />
+        </label>
+        <button className="primary-button" type="submit" disabled={status === 'loading'}>
+          <BadgeCheck size={18} />
+          Activate
+        </button>
+      </form>
 
       {message ? <p className={`analytics-status analytics-status-${status}`}>{message}</p> : null}
 

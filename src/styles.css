@@ -1542,11 +1542,27 @@ button:disabled {
   background: rgba(3, 7, 15, 0.28);
 }
 
+.device-license-grant {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
+  align-items: end;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(0, 199, 119, 0.25);
+  border-radius: 8px;
+  background: rgba(0, 199, 119, 0.07);
+}
+
 .license-form-title {
   display: flex;
   align-items: center;
   gap: 12px;
   grid-column: 1 / -1;
+}
+
+.license-form-title p {
+  margin: 4px 0 0;
+  color: rgba(244, 248, 255, 0.64);
 }
 
 .license-form-title svg,
@@ -1561,6 +1577,7 @@ button:disabled {
 }
 
 .license-create-form label,
+.device-license-grant label,
 .license-controls label {
   display: grid;
   gap: 8px;
@@ -2601,11 +2618,13 @@ button:disabled {
     grid-template-columns: repeat(3, 1fr);
   }
 
-  .license-create-form {
+  .license-create-form,
+  .device-license-grant {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .license-create-form .primary-button {
+  .license-create-form .primary-button,
+  .device-license-grant .primary-button {
     width: 100%;
   }
 
@@ -2644,6 +2663,7 @@ button:disabled {
   .admin-dialog-form-grid,
   .admin-dialog-lists,
   .license-create-form,
+  .device-license-grant,
   .license-controls,
   .business-grid,
   .business-status-grid,
