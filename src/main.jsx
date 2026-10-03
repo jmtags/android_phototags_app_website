@@ -450,6 +450,34 @@ const features = [
   }
 ];
 
+const receiptTemplates = [
+  {
+    title: 'Super Snap',
+    label: 'Comic-book cover',
+    image: '/assets/receipt-template-super-snap.webp'
+  },
+  {
+    title: 'Snap Hero',
+    label: 'Monochrome collector card',
+    image: '/assets/receipt-template-snap-hero.webp'
+  },
+  {
+    title: 'PhotoTags Times',
+    label: 'Front-page keepsake',
+    image: '/assets/receipt-template-phototags-times.webp'
+  },
+  {
+    title: 'Wanted',
+    label: 'Old-west poster',
+    image: '/assets/receipt-template-wanted.webp'
+  },
+  {
+    title: 'Fashion',
+    label: 'Magazine-style portrait',
+    image: '/assets/receipt-template-fashion.webp'
+  }
+];
+
 const steps = [
   {
     title: 'Choose a mode',
@@ -584,6 +612,7 @@ function App() {
 
   const siteLinks = [
     ['#features', 'Features'],
+    ['#receiptbooth-templates', 'Templates'],
     ['#early-access', 'Early Access'],
     ['#app-versions', 'Versions'],
     ['#how-it-works', 'How It Works'],
@@ -691,6 +720,36 @@ function App() {
             </article>
           );
         })}
+      </section>
+
+      <section className="receipt-templates-section" id="receiptbooth-templates">
+        <div className="receipt-templates-copy">
+          <p className="eyebrow">Receiptbooth Templates</p>
+          <h2>Turn every print into a mini headline, poster, or collector card.</h2>
+          <p>
+            Receiptbooth includes supplied layouts for comic covers, hero cards, front pages,
+            wanted posters, and fashion-style portraits, plus a booth-ready sample display for events.
+          </p>
+          <div className="receipt-template-stats" aria-label="Receiptbooth template highlights">
+            <span><ImageIcon size={18} /> Five supplied templates</span>
+            <span><Grid2X2 size={18} /> 1-4 photo arrangements</span>
+            <span><Printer size={18} /> Print-ready receipt output</span>
+          </div>
+        </div>
+        <div className="receipt-booth-showcase">
+          <img src="/assets/receiptbooth-sample-booth.webp" alt="PhotoTags Receiptbooth sample booth display" />
+        </div>
+        <div className="receipt-template-gallery" aria-label="Receiptbooth template samples">
+          {receiptTemplates.map((template) => (
+            <article className="receipt-template-card" key={template.title}>
+              <img src={template.image} alt={`${template.title} Receiptbooth template sample`} loading="lazy" />
+              <div>
+                <strong>{template.title}</strong>
+                <span>{template.label}</span>
+              </div>
+            </article>
+          ))}
+        </div>
       </section>
 
       <section className="info-strip" id="printer-support">
