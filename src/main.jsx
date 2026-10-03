@@ -113,6 +113,83 @@ const HOME_LICENSE_PLAN_FALLBACK = [
 ];
 const appVersions = [
   {
+    versionName: '0.2.58',
+    versionCode: 69,
+    label: 'Latest release',
+    date: 'October 2026',
+    summary: 'Security controls, Canon EOS M50 support, Epson borderless geometry improvements, Receiptbooth print-count pricing, supplied receipt templates, and richer layout editors.',
+    sections: [
+      {
+        title: 'Security And Admin',
+        items: [
+          'Added Admin-button visibility controls.',
+          'Added five-second long press to temporarily reveal the Admin button.',
+          'Added optional six-digit Admin PIN protection and recovery support.',
+          'Holding the upper-right corner for five seconds shows or hides the header.',
+          'The header always remains visible inside Admin.'
+        ]
+      },
+      {
+        title: 'Canon Camera Support',
+        items: [
+          'Added Canon EOS M50'
+        ]
+      },
+      {
+        title: 'Epson Printing',
+        items: [
+          'Added Epson horizontal and vertical offset controls.',
+          'Corrected Epson print-origin positioning.',
+          'Added Admin options for borderless and non-borderless printing.',
+          'Added borderless bleed and edge-testing tools.',
+          'Added Epson L18050 RGB and JPEG diagnostic print paths.',
+          'Improved USB transfer failure handling for edge tests.',
+          'Added custom borderless geometry.',
+          'Added automatic fit-to-paper behavior without percentage-based scaling.',
+          'Added 4R borderless support for Epson L18050 and L3210.',
+          'Applied the Epson automatic-fit path to Photobooth and ID Photo modes.'
+        ]
+      },
+      {
+        title: 'Receiptbooth',
+        items: [
+          'Changed Receiptbooth pricing from number of shots to number of prints.',
+          'Added print-count selection to Step 1 when coin payments are enabled.',
+          'Added a live total price beside the Step 1 print count.',
+          'When coin payments are disabled, print count now appears on Step 2.',
+          'When coin payments are enabled, the Step 2 print selector is removed.',
+          'Selected copy counts now reach the actual thermal print job.',
+          'Completed Receiptbooth designs are saved under Pictures/PhotoTags/<date>/.',
+          'Saved images include the template, photos, signatures, and decorations.',
+          'Added local-gallery support consistently for Photobooth, ID Photo, and Receiptbooth.'
+        ]
+      },
+      {
+        title: 'Receipt Templates',
+        items: [
+          'Removed the Classic, Soft, Comic, and ImageMagick choices from Receiptbooth Step 2.',
+          'Added five supplied templates: Super Snap, Snap Hero, PhotoTags Times, Wanted, and Fashion.',
+          'Added automatic 1-, 2-, 3-, and 4-photo arrangements for every template.',
+          'Ensured the Step 2 preview and printed receipt use the same selected design.',
+          'Preserved the full template resolution while reducing bundled asset size.'
+        ]
+      },
+      {
+        title: 'Layout Editors',
+        items: [
+          'Added frame rotation to the Photobooth custom-frame editor.',
+          'Added all five Receiptbooth user templates to Admin -> Receiptbooth Layout.',
+          'Admins can load a built-in Receiptbooth template as an editable layout.',
+          'The embedded sample portrait is removed automatically.',
+          'Admins can move and resize 1-4 photo frames.',
+          'Added reset, undo, redo, stickers, and text support.',
+          'The selected built-in design and frame edits are saved persistently.',
+          'Edited Receiptbooth layouts can be locked as the customer-facing Admin template.'
+        ]
+      }
+    ]
+  },
+  {
     versionName: '0.2.36',
     versionCode: 47,
     label: 'Previous release',
