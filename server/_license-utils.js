@@ -46,8 +46,8 @@ function getText(body, camelName, snakeName = camelName) {
 }
 
 function getTrialDays() {
-  const value = Number(process.env.LICENSE_TRIAL_DAYS || 14);
-  return Number.isInteger(value) && value >= 0 && value <= 365 ? value : 14;
+  const value = Number(process.env.LICENSE_TRIAL_DAYS || 1);
+  return Number.isInteger(value) && value >= 0 && value <= 365 ? value : 1;
 }
 
 function validateDeviceId(deviceId) {

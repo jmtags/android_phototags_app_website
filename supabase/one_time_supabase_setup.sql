@@ -194,7 +194,7 @@ create table if not exists public.devices (
   app_version text,
   platform text not null default 'android',
   trial_started_at timestamptz not null default now(),
-  trial_ends_at timestamptz not null default (now() + interval '14 days'),
+  trial_ends_at timestamptz not null default (now() + interval '1 day'),
   status text not null default 'trial',
   constraint devices_device_id_length check (char_length(device_id) between 3 and 200),
   constraint devices_status check (status in ('trial', 'trial_expired', 'licensed', 'blocked'))
@@ -252,7 +252,7 @@ create or replace function public.register_device(
   p_device_id text,
   p_app_version text default null,
   p_platform text default 'android',
-  p_trial_days integer default 14
+  p_trial_days integer default 1
 )
 returns table(
   status text,
@@ -282,7 +282,7 @@ begin
     nullif(trim(coalesce(p_app_version, '')), ''),
     coalesce(nullif(trim(coalesce(p_platform, '')), ''), 'android'),
     now(),
-    now() + make_interval(days => greatest(coalesce(p_trial_days, 14), 0)),
+    now() + make_interval(days => greatest(coalesce(p_trial_days, 1), 0)),
     'trial'
   )
   on conflict (device_id) do update
