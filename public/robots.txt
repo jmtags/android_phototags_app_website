@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /business
+Disallow: /activate
+Disallow: /download/
+Disallow: /api/
+
+Sitemap: https://phototags.vercel.app/sitemap.xml

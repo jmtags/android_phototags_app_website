@@ -539,6 +539,86 @@ function getHomePlanIcon(planId, index) {
   return [BadgeCheck, RefreshCw, Camera][index % 3];
 }
 
+const SITE_ORIGIN = 'https://phototags.vercel.app';
+const DEFAULT_SEO = {
+  title: 'PhotoTags | Android Photobooth, Receiptbooth, and ID Photo Kiosk',
+  description: 'PhotoTags turns Android phones and tablets into portable photobooth, Receiptbooth, and ID photo kiosks with custom layouts, direct printing, QR downloads, licensing, and business transaction sync.',
+  robots: 'index, follow, max-image-preview:large',
+  image: `${SITE_ORIGIN}/assets/hero-mockup.png`,
+  canonicalPath: '/'
+};
+
+function setMetaTag(selector, attributes) {
+  let element = document.head.querySelector(selector);
+  if (!element) {
+    element = document.createElement('meta');
+    document.head.appendChild(element);
+  }
+
+  Object.entries(attributes).forEach(([key, value]) => {
+    element.setAttribute(key, value);
+  });
+}
+
+function setLinkTag(rel, href) {
+  let element = document.head.querySelector(`link[rel="${rel}"]`);
+  if (!element) {
+    element = document.createElement('link');
+    element.setAttribute('rel', rel);
+    document.head.appendChild(element);
+  }
+
+  element.setAttribute('href', href);
+}
+
+function getSeoForPath(pathname) {
+  if (pathname === '/privacy-policy') {
+    return {
+      title: 'Privacy Policy | PhotoTags',
+      description: 'Read how PhotoTags handles website analytics, APK downloads, customer reviews, and temporary QR photo downloads.',
+      robots: 'index, follow',
+      canonicalPath: '/privacy-policy'
+    };
+  }
+
+  if (pathname === '/use-policy') {
+    return {
+      title: 'Use Policy | PhotoTags',
+      description: 'Read the acceptable use policy for the PhotoTags website, Android APK download, QR photo downloads, and review features.',
+      robots: 'index, follow',
+      canonicalPath: '/use-policy'
+    };
+  }
+
+  if (pathname.startsWith('/business') || pathname === '/admin' || pathname === '/activate' || pathname.startsWith('/download/')) {
+    return {
+      title: 'PhotoTags',
+      description: DEFAULT_SEO.description,
+      robots: 'noindex, nofollow',
+      canonicalPath: pathname
+    };
+  }
+
+  return DEFAULT_SEO;
+}
+
+function applySeoMetadata(pathname) {
+  const seo = { ...DEFAULT_SEO, ...getSeoForPath(pathname) };
+  const canonicalUrl = `${SITE_ORIGIN}${seo.canonicalPath}`;
+
+  document.title = seo.title;
+  setMetaTag('meta[name="description"]', { name: 'description', content: seo.description });
+  setMetaTag('meta[name="robots"]', { name: 'robots', content: seo.robots });
+  setMetaTag('meta[property="og:title"]', { property: 'og:title', content: seo.title });
+  setMetaTag('meta[property="og:description"]', { property: 'og:description', content: seo.description });
+  setMetaTag('meta[property="og:url"]', { property: 'og:url', content: canonicalUrl });
+  setMetaTag('meta[property="og:image"]', { property: 'og:image', content: seo.image });
+  setMetaTag('meta[name="twitter:title"]', { name: 'twitter:title', content: seo.title });
+  setMetaTag('meta[name="twitter:description"]', { name: 'twitter:description', content: seo.description });
+  setMetaTag('meta[name="twitter:image"]', { name: 'twitter:image', content: seo.image });
+  setLinkTag('canonical', canonicalUrl);
+}
+
 function App() {
   const [isSiteMenuOpen, setIsSiteMenuOpen] = useState(false);
   const [homeLicensePlans, setHomeLicensePlans] = useState(HOME_LICENSE_PLAN_FALLBACK);
@@ -550,6 +630,10 @@ function App() {
   const isUsePolicyPage = window.location.pathname === '/use-policy';
   const isActivationPage = window.location.pathname === '/activate';
   const isHomePage = !isAdminPage && !isBusinessPage && !isDownloadPage && !isPrivacyPage && !isUsePolicyPage && !isActivationPage;
+
+  useEffect(() => {
+    applySeoMetadata(window.location.pathname);
+  }, []);
 
   useEffect(() => {
     if (isHomePage) {
