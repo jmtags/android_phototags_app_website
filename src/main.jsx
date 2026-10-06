@@ -1280,7 +1280,7 @@ function getLocalDateInput(value) {
   return offsetDate.toISOString().slice(0, 10);
 }
 
-function BusinessTransactionsSection({ devices, transactions }) {
+function BusinessTransactionsSection({ devices, transactions, onRefresh, refreshing }) {
   const [filters, setFilters] = useState(TRANSACTION_FILTER_INITIAL);
   const filteredTransactions = useMemo(() => {
     const fromTime = filters.dateFrom ? new Date(`${filters.dateFrom}T00:00:00`).getTime() : null;
@@ -1325,10 +1325,16 @@ function BusinessTransactionsSection({ devices, transactions }) {
           <h2>PhotoTags transactions</h2>
           <p>Synced kiosk sales, voucher attempts, and Receiptbooth print usage.</p>
         </div>
-        <button className="outline-button" type="button" onClick={clearFilters}>
-          <SlidersHorizontal size={18} />
-          Clear Filters
-        </button>
+        <div className="business-section-actions">
+          <button className="outline-button" type="button" onClick={onRefresh} disabled={refreshing}>
+            <RefreshCw size={18} className={refreshing ? 'spin' : ''} />
+            Refresh
+          </button>
+          <button className="outline-button" type="button" onClick={clearFilters}>
+            <SlidersHorizontal size={18} />
+            Clear Filters
+          </button>
+        </div>
       </div>
 
       <div className="business-transaction-summary">
@@ -1768,8 +1774,11 @@ function BusinessPage() {
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
 
-  const loadDashboard = async () => {
-    setStatus('loading');
+  const loadDashboard = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setStatus('loading');
+    }
+
     try {
       const response = await fetch('/api/business/dashboard', { headers: { Accept: 'application/json' } });
       const payload = await response.json();
@@ -1787,14 +1796,28 @@ function BusinessPage() {
       });
       setStatus('ready');
     } catch {
-      setDashboard(null);
-      setStatus('auth');
+      if (!silent) {
+        setDashboard(null);
+        setStatus('auth');
+      }
     }
   };
 
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  useEffect(() => {
+    if (!dashboard) {
+      return undefined;
+    }
+
+    const refreshId = window.setInterval(() => {
+      loadDashboard({ silent: true });
+    }, 30000);
+
+    return () => window.clearInterval(refreshId);
+  }, [dashboard?.business?.id]);
 
   const submitAuth = async (event) => {
     event.preventDefault();
@@ -2009,7 +2032,12 @@ function BusinessPage() {
         </div>
       </section>
 
-      <BusinessTransactionsSection devices={dashboard.devices || []} transactions={dashboard.transactions || []} />
+      <BusinessTransactionsSection
+        devices={dashboard.devices || []}
+        transactions={dashboard.transactions || []}
+        onRefresh={() => loadDashboard()}
+        refreshing={status === 'loading'}
+      />
 
       <section className="business-card">
         <h2>Payment history</h2>

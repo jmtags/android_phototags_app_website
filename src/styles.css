@@ -2188,6 +2188,13 @@ button:disabled {
   gap: 18px;
 }
 
+.business-section-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .business-section-heading p {
   margin: 8px 0 0;
   color: rgba(244, 248, 255, 0.66);
@@ -2908,6 +2915,14 @@ button:disabled {
   .business-section-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .business-section-actions {
+    justify-content: stretch;
+  }
+
+  .business-section-actions .outline-button {
+    flex: 1 1 180px;
   }
 
   .license-card-header,
