@@ -2181,6 +2181,60 @@ button:disabled {
   font-size: 1.45rem;
 }
 
+.business-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.business-section-heading p {
+  margin: 8px 0 0;
+  color: rgba(244, 248, 255, 0.66);
+  line-height: 1.45;
+}
+
+.business-transaction-summary,
+.business-transaction-filters {
+  display: grid;
+  gap: 12px;
+}
+
+.business-transaction-summary {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.business-transaction-summary article {
+  display: grid;
+  gap: 8px;
+  min-height: 98px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(3, 7, 15, 0.28);
+}
+
+.business-transaction-summary span,
+.business-transaction-filters label {
+  color: rgba(244, 248, 255, 0.68);
+  font-weight: 720;
+}
+
+.business-transaction-summary strong {
+  font-size: clamp(1.25rem, 2vw, 1.8rem);
+  overflow-wrap: anywhere;
+}
+
+.business-transaction-filters {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: end;
+}
+
+.business-transaction-filters label {
+  display: grid;
+  gap: 8px;
+}
+
 .business-form {
   display: grid;
   gap: 14px;
@@ -2240,6 +2294,10 @@ button:disabled {
 
 .business-row strong {
   overflow-wrap: anywhere;
+}
+
+.business-transaction-row {
+  grid-template-columns: minmax(120px, 0.8fr) minmax(120px, 0.8fr) minmax(90px, 0.6fr) minmax(90px, 0.6fr) minmax(90px, 0.6fr) minmax(150px, 1fr) minmax(150px, 1fr);
 }
 
 .download-header {
@@ -2735,7 +2793,9 @@ button:disabled {
 
   .license-summary-grid,
   .admin-filter-panel,
-  .admin-plan-price-grid {
+  .admin-plan-price-grid,
+  .business-transaction-summary,
+  .business-transaction-filters {
     grid-template-columns: repeat(3, 1fr);
   }
 
@@ -2788,6 +2848,8 @@ button:disabled {
   .license-controls,
   .business-grid,
   .business-status-grid,
+  .business-transaction-summary,
+  .business-transaction-filters,
   .reviews-layout {
     grid-template-columns: 1fr;
   }
@@ -2841,6 +2903,11 @@ button:disabled {
   .business-row {
     grid-template-columns: 1fr;
     align-items: start;
+  }
+
+  .business-section-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .license-card-header,

@@ -52,11 +52,13 @@ module.exports = async function handler(request, response) {
     settingsResult,
     devicesResult,
     paymentsResult,
+    transactionsResult,
     codeResult
   ] = await Promise.all([
     supabase.from('business_payment_settings').select('paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled, webhook_enabled, updated_at').eq('business_id', businessId).maybeSingle(),
     supabase.from('devices').select('device_id, app_version, platform, status, paired_at, last_seen_at, created_at, updated_at').eq('business_id', businessId).order('last_seen_at', { ascending: false }).limit(100),
     supabase.from('payment_sessions').select('id, device_id, mode, amount, currency, status, paymongo_checkout_url, paid_at, expires_at, created_at, updated_at').eq('business_id', businessId).order('created_at', { ascending: false }).limit(100),
+    supabase.from('transactions').select('id, device_id, transaction_id, occurred_at, received_at, mode, payment_method, status, amount_centavos, voucher_code, prints_used, note').eq('business_id', businessId).order('occurred_at', { ascending: false }).limit(1000),
     supabase.from('device_pairing_codes').select('code, expires_at, used_at, created_at').eq('business_id', businessId).is('used_at', null).gt('expires_at', new Date().toISOString()).order('created_at', { ascending: false }).limit(1).maybeSingle()
   ]);
 
@@ -74,11 +76,13 @@ module.exports = async function handler(request, response) {
     activePairingCode: codeResult.data || null,
     devices: devicesResult.data || [],
     payments: paymentsResult.data || [],
+    transactions: transactionsResult.data || [],
     summary: {
       linkedDevices: (devicesResult.data || []).length,
       paymongoConnected: normalizeSettings(settingsResult.data).paymongoConnected,
       qrphEnabled: Boolean(settingsResult.data?.qrph_enabled),
-      payments: (paymentsResult.data || []).length
+      payments: (paymentsResult.data || []).length,
+      transactions: (transactionsResult.data || []).length
     }
   });
 };

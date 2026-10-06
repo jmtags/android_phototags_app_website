@@ -9,6 +9,10 @@
       "destination": "/api/device?route=pair"
     },
     {
+      "source": "/api/devices/transactions/sync",
+      "destination": "/api/devices?route=transactions-sync"
+    },
+    {
       "source": "/api/license/activate",
       "destination": "/api/license?route=activate"
     },
