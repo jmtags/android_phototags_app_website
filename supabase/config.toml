@@ -1,0 +1,4 @@
+project_id = "zizzmsaybcqbqgtzzpst"
+
+[functions.cleanup-photo-downloads]
+verify_jwt = false

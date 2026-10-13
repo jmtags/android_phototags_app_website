@@ -17,7 +17,26 @@ function getCode(request) {
   return typeof code === 'string' ? code.trim() : '';
 }
 
-module.exports = async function handler(request, response) {
+function createClientFromEnv() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    return null;
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false
+    }
+  });
+}
+
+async function handleDownload(request, response, {
+  createSupabaseClient = createClientFromEnv,
+  getNow = () => Date.now()
+} = {}) {
   if (request.method !== 'GET') {
     response.setHeader('Allow', 'GET');
     sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
@@ -30,24 +49,15 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
+  const supabase = createSupabaseClient();
+  if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
     return;
   }
 
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
-    }
-  });
-
   const { data: row, error } = await supabase
     .from('photo_downloads')
-    .select('code, file_path, expires_at')
+    .select('code, file_path, gif_file_path, expires_at')
     .eq('code', code)
     .maybeSingle();
 
@@ -61,7 +71,7 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const now = Date.now();
+  const now = getNow();
   const expiresAtMs = new Date(row.expires_at).getTime();
   const remainingSeconds = Math.floor((expiresAtMs - now) / 1000);
 
@@ -99,15 +109,55 @@ module.exports = async function handler(request, response) {
     return;
   }
 
+  let gifSignedUrl = null;
+  let gifDownloadUrl = null;
+
+  if (row.gif_file_path) {
+    const { data: gifSignedUrlData, error: gifSignedUrlError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(row.gif_file_path, signedUrlSeconds);
+
+    const { data: gifDownloadUrlData, error: gifDownloadUrlError } = await supabase.storage
+      .from(BUCKET_NAME)
+      .createSignedUrl(row.gif_file_path, signedUrlSeconds, {
+        download: `phototags-${code}.gif`
+      });
+
+    if (
+      !gifSignedUrlError &&
+      !gifDownloadUrlError &&
+      gifSignedUrlData?.signedUrl &&
+      gifDownloadUrlData?.signedUrl
+    ) {
+      gifSignedUrl = gifSignedUrlData.signedUrl;
+      gifDownloadUrl = gifDownloadUrlData.signedUrl;
+    }
+  }
+
   await supabase.rpc('increment_photo_download_metrics', { download_code: code });
 
-  sendJson(response, 200, {
+  const payload = {
     ok: true,
     status: 'ready',
     code: row.code,
     signedUrl: signedUrlData.signedUrl,
     downloadUrl: downloadUrlData.signedUrl,
+    gifAvailable: Boolean(gifSignedUrl && gifDownloadUrl),
     expiresAt: row.expires_at,
     signedUrlExpiresAt: new Date(now + signedUrlSeconds * 1000).toISOString()
-  });
-};
+  };
+
+  if (gifSignedUrl && gifDownloadUrl) {
+    payload.gifSignedUrl = gifSignedUrl;
+    payload.gifDownloadUrl = gifDownloadUrl;
+  }
+
+  sendJson(response, 200, payload);
+}
+
+function createDownloadHandler(dependencies = {}) {
+  return (request, response) => handleDownload(request, response, dependencies);
+}
+
+module.exports = createDownloadHandler();
+module.exports.createDownloadHandler = createDownloadHandler;

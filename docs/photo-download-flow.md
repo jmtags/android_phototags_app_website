@@ -36,11 +36,13 @@ POST https://phototags.vercel.app/api/upload
 Content-Type: application/json
 
 {
-  "contentType": "image/jpeg"
+  "contentType": "image/jpeg",
+  "includeGif": true
 }
 ```
 
 Allowed `contentType` values are `image/jpeg`, `image/png`, and `image/webp`.
+`includeGif` is optional and defaults to `false`, so installed app versions that only send `contentType` remain supported.
 
 2. The API returns the code, private Storage path, QR URL, expiry, and signed Supabase upload URL:
 
@@ -52,9 +54,12 @@ Allowed `contentType` values are `image/jpeg`, `image/png`, and `image/webp`.
   "filePath": "captures/2026/09/03/AbC123xy90.jpg",
   "bucket": "photobooth-downloads",
   "contentType": "image/jpeg",
+  "gifFilePath": "captures/2026/09/03/AbC123xy90.gif",
+  "gifContentType": "image/gif",
   "expiresAt": "2026-09-03T09:30:00.000Z",
   "qrUrl": "https://phototags.vercel.app/download/AbC123xy90",
   "signedUploadUrl": "https://zizzmsaybcqbqgtzzpst.supabase.co/storage/v1/object/upload/sign/...",
+  "signedGifUploadUrl": "https://zizzmsaybcqbqgtzzpst.supabase.co/storage/v1/object/upload/sign/...",
   "uploadToken": "..."
 }
 ```
@@ -66,13 +71,16 @@ Content-Type: image/jpeg
 cache-control: max-age=3600
 ```
 
+When `signedGifUploadUrl` is present, upload the animated GIF bytes to it with `Content-Type: image/gif`. The JPEG and GIF share the same download code and expiry. A GIF upload is optional; failure or absence of the GIF does not prevent the JPEG QR download from working.
+
 4. Show a QR code pointing to the returned `qrUrl`:
 
 ```text
 https://phototags.vercel.app/download/{code}
 ```
 
-The API creates the database row server-side with a 30-minute expiry. Android does not need direct table insert permissions or the Supabase service role key.
+The API creates one database row server-side with a 30-minute expiry and stores both object paths when GIF was requested. Android does not need direct table insert permissions or the Supabase service role key.
+Each session is retained for 24 hours for operational recovery, then both objects become eligible for automatic deletion. The private bucket rejects individual files larger than 15 MB.
 
 ## Website Behavior
 
@@ -82,11 +90,46 @@ The customer page calls:
 GET /api/download?code={code}
 ```
 
-The API validates the code, rejects expired rows, creates short-lived signed Storage URLs, and returns the preview/download links. Signed URLs last no longer than 10 minutes and never past the row expiry.
+The API validates the code, rejects expired rows, creates short-lived signed Storage URLs, and returns the preview/download links. Signed URLs last no longer than 10 minutes and never past the row expiry. Existing `signedUrl` and `downloadUrl` fields continue to represent the finished JPEG. When the GIF object exists, the response also includes `gifAvailable: true`, `gifSignedUrl`, and `gifDownloadUrl`. A missing optional GIF object returns `gifAvailable: false` and leaves the JPEG response usable.
 
 ## Cleanup
 
-Later cleanup code can call `delete_expired_photo_download_rows()` from trusted server code, then delete the returned file paths from the `photobooth-downloads` bucket.
+Link the Supabase CLI to the project, then create one strong random secret. Save the same value as an Edge Function secret and in Vault:
+
+```powershell
+npx supabase link --project-ref zizzmsaybcqbqgtzzpst
+npx supabase secrets set PHOTO_CLEANUP_SECRET=replace-with-a-long-random-secret
+```
+
+```sql
+select vault.create_secret(
+  'https://zizzmsaybcqbqgtzzpst.supabase.co',
+  'phototags_project_url'
+);
+
+select vault.create_secret(
+  'replace-with-the-same-long-random-secret',
+  'phototags_photo_cleanup_secret'
+);
+```
+
+Deploy the function, then apply the database migration that creates the retention column and hourly Cron job:
+
+```powershell
+npx supabase functions deploy cleanup-photo-downloads --no-verify-jwt
+npx supabase db push
+```
+
+The migration creates an hourly Supabase Cron job named `cleanup-phototags-photos-hourly`. It invokes the Edge Function at 17 minutes past each hour. The function processes up to 1,000 expired session rows per run, removes both `file_path` and optional `gif_file_path` through the Storage API, and only then deletes their `photo_downloads` rows. Storage failures retain the rows for the next retry.
+
+Check recent runs in Supabase Dashboard under **Integrations > Cron**, or query:
+
+```sql
+select status, start_time, end_time, return_message
+from cron.job_run_details
+order by start_time desc
+limit 20;
+```
 
 ## Website Analytics
 

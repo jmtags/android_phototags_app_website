@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const BUCKET_NAME = 'photobooth-downloads';
 const DOWNLOAD_TTL_MINUTES = 30;
+const PHOTO_RETENTION_HOURS = 24;
 const CODE_LENGTH = 10;
 const MAX_CODE_ATTEMPTS = 5;
 const UPLOAD_LIMIT = 10;
@@ -141,14 +142,19 @@ function createClientFromEnv() {
   });
 }
 
-module.exports = async function handler(request, response) {
+async function handleUpload(request, response, {
+  createSupabaseClient = createClientFromEnv,
+  createUploadCode = createCode,
+  getNow = () => new Date(),
+  rateLimit = checkUploadRateLimit
+} = {}) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
     sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
     return;
   }
 
-  const uploadRate = checkUploadRateLimit(request);
+  const uploadRate = rateLimit(request);
   if (!uploadRate.allowed) {
     response.setHeader('Retry-After', String(uploadRate.retryAfterSeconds));
     sendJson(response, 429, {
@@ -162,7 +168,7 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const supabase = createClientFromEnv();
+  const supabase = createSupabaseClient();
   if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
     return;
@@ -180,6 +186,7 @@ module.exports = async function handler(request, response) {
     ? body.contentType.toLowerCase().split(';')[0].trim()
     : '';
   const extension = ALLOWED_TYPES[contentType];
+  const includeGif = body.includeGif === true;
 
   if (!extension) {
     sendJson(response, 400, {
@@ -190,13 +197,15 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const now = new Date();
+  const now = getNow();
   const expiresAt = new Date(now.getTime() + DOWNLOAD_TTL_MINUTES * 60 * 1000);
+  const cleanupAfter = new Date(now.getTime() + PHOTO_RETENTION_HOURS * 60 * 60 * 1000);
   const datePrefix = now.toISOString().slice(0, 10).replace(/-/g, '/');
 
   for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
-    const code = createCode();
+    const code = createUploadCode();
     const filePath = `captures/${datePrefix}/${code}.${extension}`;
+    const gifFilePath = includeGif ? `captures/${datePrefix}/${code}.gif` : null;
 
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET_NAME)
@@ -207,18 +216,34 @@ module.exports = async function handler(request, response) {
       return;
     }
 
+    let gifUploadData = null;
+    if (gifFilePath) {
+      const { data, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .createSignedUploadUrl(gifFilePath, { upsert: false });
+
+      if (error || !data?.signedUrl) {
+        sendJson(response, 500, { ok: false, status: 'signed_gif_upload_failed' });
+        return;
+      }
+
+      gifUploadData = data;
+    }
+
     const { error: insertError } = await supabase
       .from('photo_downloads')
       .insert({
         code,
         file_path: filePath,
-        expires_at: expiresAt.toISOString()
+        gif_file_path: gifFilePath,
+        expires_at: expiresAt.toISOString(),
+        cleanup_after: cleanupAfter.toISOString()
       });
 
     if (!insertError) {
       const origin = process.env.SITE_URL || 'https://phototags.vercel.app';
 
-      sendJson(response, 201, {
+      const payload = {
         ok: true,
         status: 'ready',
         code,
@@ -226,10 +251,19 @@ module.exports = async function handler(request, response) {
         bucket: BUCKET_NAME,
         contentType,
         expiresAt: expiresAt.toISOString(),
+        cleanupAfter: cleanupAfter.toISOString(),
         qrUrl: `${origin.replace(/\/$/, '')}/download/${code}`,
         signedUploadUrl: uploadData.signedUrl,
         uploadToken: uploadData.token
-      });
+      };
+
+      if (gifFilePath && gifUploadData?.signedUrl) {
+        payload.gifFilePath = gifFilePath;
+        payload.gifContentType = 'image/gif';
+        payload.signedGifUploadUrl = gifUploadData.signedUrl;
+      }
+
+      sendJson(response, 201, payload);
       return;
     }
 
@@ -240,4 +274,11 @@ module.exports = async function handler(request, response) {
   }
 
   sendJson(response, 500, { ok: false, status: 'code_generation_failed' });
-};
+}
+
+function createUploadHandler(dependencies = {}) {
+  return (request, response) => handleUpload(request, response, dependencies);
+}
+
+module.exports = createUploadHandler();
+module.exports.createUploadHandler = createUploadHandler;

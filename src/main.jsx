@@ -2238,12 +2238,27 @@ function DownloadPhotoPage({ code }) {
               {expiresAt ? <p>This private link expires at {expiresAt}.</p> : null}
             </div>
             <div className="photo-preview">
-              <img src={downloadState.data.signedUrl} alt="Finished PhotoTags photobooth photo" />
+              <img
+                src={downloadState.data.gifAvailable
+                  ? downloadState.data.gifSignedUrl
+                  : downloadState.data.signedUrl}
+                alt={downloadState.data.gifAvailable
+                  ? 'Animated PhotoTags photobooth keepsake'
+                  : 'Finished PhotoTags photobooth photo'}
+              />
             </div>
-            <a className="primary-button download-photo-button" href={downloadState.data.downloadUrl || downloadState.data.signedUrl}>
-              <Download size={21} />
-              Download Photo
-            </a>
+            <div className="download-actions">
+              <a className="primary-button download-photo-button" href={downloadState.data.downloadUrl || downloadState.data.signedUrl}>
+                <Download size={21} />
+                Download Photo
+              </a>
+              {downloadState.data.gifAvailable ? (
+                <a className="outline-button download-photo-button" href={downloadState.data.gifDownloadUrl || downloadState.data.gifSignedUrl}>
+                  <Download size={21} />
+                  Download GIF
+                </a>
+              ) : null}
+            </div>
           </>
         ) : null}
 

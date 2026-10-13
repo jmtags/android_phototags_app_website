@@ -2369,6 +2369,14 @@ button:disabled {
   min-width: min(100%, 280px);
 }
 
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+}
+
 .download-status {
   display: grid;
   justify-items: center;
@@ -3013,6 +3021,15 @@ button:disabled {
     min-height: 46px;
     padding-inline: 15px;
     font-size: 0.92rem;
+  }
+
+  .download-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .download-actions .download-photo-button {
+    width: 100%;
   }
 
   .hero {
