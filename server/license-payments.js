@@ -32,14 +32,21 @@ function getClientIp(request) {
     .slice(0, 120);
 }
 
-async function paymongoV2Request(secretKey, path, options = {}) {
-  const response = await fetch(`https://api.paymongo.com/v2${path}`, {
+async function paymongoRequest(secretKey, path, options = {}) {
+  const apiVersion = options.apiVersion || 'v2';
+  const headers = {
+    Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
+  };
+
+  if (options.idempotencyKey) {
+    headers['Idempotency-Key'] = options.idempotencyKey;
+  }
+
+  const response = await fetch(`https://api.paymongo.com/${apiVersion}${path}`, {
     method: options.method || 'GET',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json'
-    },
+    headers,
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const payload = await response.json().catch(() => ({}));
@@ -102,10 +109,12 @@ function normalizePlan(plan) {
   };
 }
 
-function generateLicenseKey(planId) {
+function generateLicenseKey(planId, seed = null) {
   const prefix = planId === 'lifetime' ? 'PT-LIFE' : planId === 'weekly' ? 'PT-WEEK' : 'PT-MONTH';
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = crypto.randomBytes(16);
+  const bytes = seed
+    ? crypto.createHash('sha256').update(seed).digest().subarray(0, 16)
+    : crypto.randomBytes(16);
   const chars = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
   return `${prefix}-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
 }
@@ -114,46 +123,122 @@ function addDays(days) {
   return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+function getCheckoutResource(payload) {
+  const data = payload?.data;
+
+  if (data?.attributes?.data) {
+    return data.attributes.data;
+  }
+
+  if (data?.data) {
+    return data.data;
+  }
+
+  if (data?.attributes) {
+    return data;
+  }
+
+  return payload?.attributes ? payload : {};
+}
+
 function isCheckoutPaid(checkoutPayload) {
-  const attributes = checkoutPayload?.data?.attributes || checkoutPayload?.attributes || {};
+  const checkout = getCheckoutResource(checkoutPayload);
+  const attributes = checkout.attributes || {};
   const payments = Array.isArray(attributes.payments) ? attributes.payments : [];
-  const intent = attributes.payment_intent?.attributes || {};
+  const intent = attributes.payment_intent?.attributes || attributes.paymentIntent?.attributes || {};
   const intentPayments = Array.isArray(intent.payments) ? intent.payments : [];
-  const rawStatus = String(attributes.status || intent.status || '').toLowerCase();
+  const rawStatus = String(intent.status || attributes.payment_status || '').toLowerCase();
 
   return ['paid', 'succeeded'].includes(rawStatus)
     || payments.some((payment) => ['paid', 'succeeded'].includes(String(payment?.attributes?.status || '').toLowerCase()))
     || intentPayments.some((payment) => ['paid', 'succeeded'].includes(String(payment?.attributes?.status || '').toLowerCase()));
 }
 
+function getPaidCheckoutDetails(checkoutPayload) {
+  const checkout = getCheckoutResource(checkoutPayload);
+  const attributes = checkout.attributes || {};
+  const intent = attributes.payment_intent?.attributes || attributes.paymentIntent?.attributes || {};
+  const payments = [
+    ...(Array.isArray(attributes.payments) ? attributes.payments : []),
+    ...(Array.isArray(intent.payments) ? intent.payments : [])
+  ];
+  const paidPayment = payments.find((payment) => ['paid', 'succeeded'].includes(String(payment?.attributes?.status || '').toLowerCase()));
+  const paymentAttributes = paidPayment?.attributes || {};
+  const amount = Number(paymentAttributes.amount ?? intent.amount);
+  const currency = String(paymentAttributes.currency || intent.currency || '').toUpperCase();
+
+  return {
+    amount: Number.isInteger(amount) ? amount : null,
+    currency: currency || null
+  };
+}
+
+async function findLicenseForSession(supabase, session, licenseKey = null) {
+  const byReference = await supabase
+    .from('licenses')
+    .select('id, license_key')
+    .eq('payment_reference', session.reference_number)
+    .limit(1)
+    .maybeSingle();
+
+  if (byReference.error) {
+    throw byReference.error;
+  }
+
+  if (byReference.data || !licenseKey) {
+    return byReference.data;
+  }
+
+  const byKey = await supabase
+    .from('licenses')
+    .select('id, license_key')
+    .eq('license_key', licenseKey)
+    .maybeSingle();
+
+  if (byKey.error) {
+    throw byKey.error;
+  }
+
+  return byKey.data;
+}
+
 async function createLicenseWithRetry(supabase, session, plan) {
   const expiresAt = plan.durationDays ? addDays(plan.durationDays) : null;
+  const existingLicense = await findLicenseForSession(supabase, session);
 
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { data, error } = await supabase
-      .from('licenses')
-      .insert({
-        license_key: generateLicenseKey(plan.id),
-        plan: plan.id,
-        status: 'active',
-        max_devices: plan.maxDevices,
-        expires_at: expiresAt,
-        customer_email: session.customer_email || null,
-        payment_reference: session.reference_number
-      })
-      .select('id, license_key')
-      .single();
+  if (existingLicense) {
+    return existingLicense;
+  }
 
-    if (!error) {
-      return data;
-    }
+  // A stable key makes concurrent webhook and polling fulfillment converge on one license.
+  const licenseKey = generateLicenseKey(plan.id, `${session.id}:${session.reference_number}`);
 
-    if (error.code !== '23505') {
-      throw error;
+  const { data, error } = await supabase
+    .from('licenses')
+    .insert({
+      license_key: licenseKey,
+      plan: plan.id,
+      status: 'active',
+      max_devices: plan.maxDevices,
+      expires_at: expiresAt,
+      customer_email: session.customer_email || null,
+      payment_reference: session.reference_number
+    })
+    .select('id, license_key')
+    .single();
+
+  if (!error) {
+    return data;
+  }
+
+  if (error.code === '23505') {
+    const concurrentLicense = await findLicenseForSession(supabase, session, licenseKey);
+    if (concurrentLicense) {
+      return concurrentLicense;
     }
   }
 
-  throw new Error('license_key_collision');
+  throw error;
 }
 
 async function fulfillPaidSession(supabase, session, checkoutPayload) {
@@ -161,23 +246,40 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
     return session;
   }
 
-  const plan = await getLicensePlan(session.plan, supabase);
-  if (!plan || plan.amount !== session.amount || plan.currency !== session.currency) {
+  const plan = await getLicensePlan(session.plan, supabase, { includeInactive: true });
+  const paidCheckout = getPaidCheckoutDetails(checkoutPayload);
+  if (!plan
+    || paidCheckout.amount !== session.amount
+    || paidCheckout.currency !== session.currency) {
     throw new Error('license_payment_plan_mismatch');
   }
 
-  await supabase
+  const planSnapshot = session.payment_payload?.plan_snapshot || {};
+  const purchasedPlan = {
+    ...plan,
+    durationDays: Object.prototype.hasOwnProperty.call(planSnapshot, 'duration_days')
+      ? planSnapshot.duration_days
+      : plan.durationDays,
+    maxDevices: Object.prototype.hasOwnProperty.call(planSnapshot, 'max_devices')
+      ? planSnapshot.max_devices
+      : plan.maxDevices
+  };
+
+  const deviceResult = await supabase
     .from('devices')
     .upsert({
       device_id: session.device_id,
       platform: 'android',
-      status: 'licensed',
       last_seen_at: new Date().toISOString()
     }, { onConflict: 'device_id' });
 
-  const license = await createLicenseWithRetry(supabase, session, plan);
+  if (deviceResult.error) {
+    throw deviceResult.error;
+  }
 
-  await supabase
+  const license = await createLicenseWithRetry(supabase, session, purchasedPlan);
+
+  const activationResult = await supabase
     .from('license_activations')
     .upsert({
       license_id: license.id,
@@ -185,15 +287,27 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
       last_checked_at: new Date().toISOString()
     }, { onConflict: 'license_id,device_id' });
 
-  await supabase
+  if (activationResult.error) {
+    throw activationResult.error;
+  }
+
+  const licenseResult = await supabase
     .from('licenses')
     .update({ activated_at: new Date().toISOString() })
     .eq('id', license.id);
 
-  await supabase
+  if (licenseResult.error) {
+    throw licenseResult.error;
+  }
+
+  const licensedDeviceResult = await supabase
     .from('devices')
     .update({ status: 'licensed', last_seen_at: new Date().toISOString() })
     .eq('device_id', session.device_id);
+
+  if (licensedDeviceResult.error) {
+    throw licensedDeviceResult.error;
+  }
 
   const { data, error } = await supabase
     .from('license_payment_sessions')
@@ -380,16 +494,26 @@ async function createCheckout(request, response) {
   }
 
   const referenceNumber = `PT-${plan.id.toUpperCase()}-${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+  const expiresAt = null;
   const agreementAcceptedAt = new Date().toISOString();
+  const planSnapshot = {
+    duration_days: plan.durationDays,
+    max_devices: plan.maxDevices
+  };
 
-  await supabase
+  const { error: deviceError } = await supabase
     .from('devices')
     .upsert({
       device_id: deviceId,
       platform: 'android',
       last_seen_at: new Date().toISOString()
     }, { onConflict: 'device_id' });
+
+  if (deviceError) {
+    console.error('License checkout device upsert failed', deviceError.message);
+    sendJson(response, 500, { ok: false, status: 'device_save_failed' });
+    return;
+  }
 
   const { data: session, error: insertError } = await supabase
     .from('license_payment_sessions')
@@ -402,6 +526,7 @@ async function createCheckout(request, response) {
       reference_number: referenceNumber,
       customer_email: customerEmail,
       expires_at: expiresAt,
+      payment_payload: { plan_snapshot: planSnapshot },
       agreement_accepted_at: agreementAcceptedAt,
       agreement_terms_version: AGREEMENT_VERSIONS.terms,
       agreement_privacy_version: AGREEMENT_VERSIONS.privacy,
@@ -429,8 +554,9 @@ async function createCheckout(request, response) {
   let checkout;
 
   try {
-    checkout = await paymongoV2Request(secretKey, '/checkout_sessions', {
+    checkout = await paymongoRequest(secretKey, '/checkout_sessions', {
       method: 'POST',
+      idempotencyKey: `phototags-license-${session.id}`,
       body: {
         data: {
           attributes: {
@@ -492,7 +618,8 @@ async function createCheckout(request, response) {
       payment_payload: {
         paymongo_id: checkoutData.id,
         reference_number: session.reference_number,
-        plan: plan.id
+        plan: plan.id,
+        plan_snapshot: planSnapshot
       }
     })
     .eq('id', session.id);
@@ -558,7 +685,7 @@ async function checkStatus(request, response) {
 
   const { data: session, error } = await supabase
     .from('license_payment_sessions')
-    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, paymongo_checkout_session_id, customer_email, updated_at')
+    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, paymongo_checkout_session_id, customer_email, payment_payload, updated_at')
     .eq('id', paymentSessionId)
     .eq('device_id', deviceId)
     .maybeSingle();
@@ -571,9 +698,14 @@ async function checkStatus(request, response) {
   let currentSession = session;
   let status = currentSession.status;
 
-  if (status === 'pending' && secretKey && currentSession.paymongo_checkout_session_id) {
+  const needsReconciliation = !currentSession.license_id && ['pending', 'expired', 'paid'].includes(status);
+  if (needsReconciliation && secretKey && currentSession.paymongo_checkout_session_id) {
     try {
-      const checkout = await paymongoV2Request(secretKey, `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`);
+      const checkout = await paymongoRequest(
+        secretKey,
+        `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`,
+        { apiVersion: 'v1' }
+      );
 
       if (isCheckoutPaid(checkout)) {
         currentSession = await fulfillPaidSession(supabase, currentSession, checkout);
@@ -584,9 +716,8 @@ async function checkStatus(request, response) {
     }
   }
 
-  if (status === 'pending' && session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
-    status = 'expired';
-    await supabase.from('license_payment_sessions').update({ status }).eq('id', session.id);
+  if (status === 'paid' && !currentSession.license_id) {
+    status = 'pending';
   }
 
   sendJson(response, 200, {
@@ -606,6 +737,10 @@ async function checkStatus(request, response) {
 module.exports = {
   checkStatus,
   createCheckout,
+  fulfillPaidSession,
+  getPaidCheckoutDetails,
+  isCheckoutPaid,
   listPlans,
+  paymongoRequest,
   updatePlan
 };

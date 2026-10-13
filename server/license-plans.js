@@ -68,8 +68,8 @@ async function getLicensePlans(supabase = null, options = {}) {
   return options.includeInactive ? plans : plans.filter((plan) => plan.active);
 }
 
-async function getLicensePlan(planId, supabase = null) {
-  const plans = await getLicensePlans(supabase);
+async function getLicensePlan(planId, supabase = null, options = {}) {
+  const plans = await getLicensePlans(supabase, options);
   return plans.find((plan) => plan.id === planId) || null;
 }
 

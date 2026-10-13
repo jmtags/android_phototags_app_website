@@ -6,7 +6,7 @@ Server-only requirements:
 
 ```text
 PAYMONGO_KEYS_ENCRYPTION_SECRET=long-random-secret
-PAYMONGO_WEBHOOK_SECRET=optional-paymongo-webhook-secret
+PAYMONGO_WEBHOOK_SECRET=whsk_webhook-signing-secret
 ```
 
 The PayMongo secret key is encrypted before storage and is never returned to the browser or Android app.

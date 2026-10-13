@@ -1489,7 +1489,7 @@ function BusinessTransactionsSection({ devices, transactions, onRefresh, refresh
 function ActivationPage() {
   const params = new URLSearchParams(window.location.search);
   const [deviceId, setDeviceId] = useState(params.get('device_id') || '');
-  const [paymentSessionId, setPaymentSessionId] = useState(params.get('payment_id') || '');
+  const [paymentSessionId] = useState(params.get('payment_id') || '');
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState('monthly');
   const [customerEmail, setCustomerEmail] = useState('');
@@ -1503,7 +1503,7 @@ function ActivationPage() {
       return 'Preparing secure PayMongo checkout...';
     }
 
-    if (status === 'checking' || paymentStatus === 'pending') {
+    if (status === 'checking') {
       return 'Checking payment confirmation...';
     }
 
@@ -1516,7 +1516,7 @@ function ActivationPage() {
     }
 
     return '';
-  }, [message, paymentStatus, status]);
+  }, [message, status]);
 
   const markPaymentPaid = () => {
     if (paidStorageKey) {
@@ -1554,6 +1554,22 @@ function ActivationPage() {
     }
 
     return payload.status;
+  };
+
+  const retryPaymentStatus = async () => {
+    setStatus('checking');
+    setMessage('');
+
+    try {
+      const nextStatus = await checkPaymentStatus();
+      if (nextStatus === 'pending') {
+        setStatus('ready');
+        setMessage('Payment is not confirmed yet. Please wait a moment, then check again.');
+      }
+    } catch {
+      setStatus('ready');
+      setMessage('Could not check the payment yet. Please try again in a moment.');
+    }
   };
 
   useEffect(() => {
@@ -1691,7 +1707,8 @@ function ActivationPage() {
   };
 
   const selected = plans.find((plan) => plan.id === selectedPlan);
-  const canSubmit = status !== 'creating' && deviceId.trim().length >= 3 && selectedPlan && acceptedAgreement;
+  const hasPendingPayment = Boolean(paymentSessionId && (status === 'checking' || paymentStatus === 'pending'));
+  const canSubmit = status !== 'creating' && !hasPendingPayment && deviceId.trim().length >= 3 && selectedPlan && acceptedAgreement;
   const appReturnUrl = `phototags://license/activated?device_id=${encodeURIComponent(deviceId)}${paymentSessionId ? `&payment_id=${encodeURIComponent(paymentSessionId)}` : ''}`;
 
   useEffect(() => {
@@ -1803,7 +1820,7 @@ function ActivationPage() {
 
         {message ? (
           <p className={`activation-message activation-message-${status}`}>
-            {status === 'checking' || paymentStatus === 'pending' ? <Loader2 size={18} className="spin" /> : null}
+            {status === 'checking' ? <Loader2 size={18} className="spin" /> : null}
             {message}
           </p>
         ) : null}
@@ -1827,16 +1844,24 @@ function ActivationPage() {
             </div>
           </div>
         ) : (
-          <button className="primary-button activation-submit" type="submit" disabled={!canSubmit}>
-            {status === 'creating' ? <Loader2 size={19} className="spin" /> : <KeyRound size={19} />}
-            {status === 'creating' ? 'Creating checkout' : 'Continue to Payment'}
-          </button>
+          <div className="activation-payment-actions">
+            {paymentSessionId && status !== 'checking' && !['failed', 'expired', 'cancelled'].includes(paymentStatus) ? (
+              <button className="outline-button" type="button" onClick={retryPaymentStatus}>
+                <RefreshCw size={19} />
+                Check payment again
+              </button>
+            ) : null}
+            <button className="primary-button activation-submit" type="submit" disabled={!canSubmit}>
+              {status === 'creating' ? <Loader2 size={19} className="spin" /> : <KeyRound size={19} />}
+              {status === 'creating' ? 'Creating checkout' : 'Continue to Payment'}
+            </button>
+          </div>
         )}
       </form>
 
       {toastText ? (
         <div className={`activation-toast activation-toast-${status}`} role="status" aria-live="polite">
-          {status === 'creating' || status === 'checking' || paymentStatus === 'pending' ? (
+          {status === 'creating' || status === 'checking' ? (
             <Loader2 size={18} className="spin" />
           ) : status === 'paid' ? (
             <BadgeCheck size={18} />

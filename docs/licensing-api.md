@@ -62,6 +62,14 @@ https://your-domain.com/activate?device_id=android-device-id-or-install-id
 
 The website handles plan selection and PayMongo Checkout. The Android app does not need the PayMongo secret key and should not call PayMongo directly.
 
+Production requires these Vercel environment variables:
+
+- `PAYMONGO_SECRET_KEY`: the live PayMongo API secret key used only by server functions
+- `PAYMONGO_WEBHOOK_SECRET`: the `whsk_...` signing secret for the configured webhook endpoint
+- `SITE_URL`: the public site origin, for example `https://phototags.vercel.app`
+
+Configure the PayMongo webhook endpoint as `https://phototags.vercel.app/api/paymongo/webhook` and subscribe it to `checkout_session.payment.paid`. The payment-status endpoint also reconciles the Checkout Session directly with PayMongo, so activation can recover when webhook delivery is delayed.
+
 After the user pays, the app should poll `POST /api/license/check` with the same `deviceId`. When `licensed` is `true`, unlock the app.
 
 Suggested polling after returning from browser:

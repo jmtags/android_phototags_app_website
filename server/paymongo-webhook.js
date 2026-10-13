@@ -1,28 +1,15 @@
 const crypto = require('crypto');
 const {
   createClientFromEnv,
-  readJson,
   sendJson
 } = require('./_business-utils');
-const { getLicensePlan } = require('./license-plans');
-
-function generateLicenseKey(planId) {
-  const prefix = planId === 'lifetime' ? 'PT-LIFE' : planId === 'weekly' ? 'PT-WEEK' : 'PT-MONTH';
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const bytes = crypto.randomBytes(16);
-  const chars = Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join('');
-  return `${prefix}-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
-}
-
-function addDays(days) {
-  return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-}
+const { fulfillPaidSession, isCheckoutPaid } = require('./license-payments');
 
 function verifyWebhook(request, rawBody) {
   const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
 
   if (!secret) {
-    return true;
+    return false;
   }
 
   const signature = request.headers['paymongo-signature'] || request.headers['x-paymongo-signature'];
@@ -39,71 +26,50 @@ function verifyWebhook(request, rawBody) {
     return values;
   }, {});
   const timestamp = parts.t || '';
-  const providedSignatures = [parts.li, parts.te, signature].filter(Boolean);
-  const signedPayloads = timestamp ? [`${timestamp}.${rawBody}`, rawBody] : [rawBody];
+  const providedSignatures = [parts.li, parts.te].filter(Boolean);
 
-  return signedPayloads.some((payload) => {
-    const expected = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+  if (!timestamp || !providedSignatures.length) {
+    return false;
+  }
 
-    return providedSignatures.some((provided) => {
-      const expectedBuffer = Buffer.from(expected);
-      const providedBuffer = Buffer.from(provided);
-      return expectedBuffer.length === providedBuffer.length
-        && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
-    });
+  const expected = crypto.createHmac('sha256', secret).update(`${timestamp}.${rawBody}`).digest('hex');
+  return providedSignatures.some((provided) => {
+    const expectedBuffer = Buffer.from(expected);
+    const providedBuffer = Buffer.from(provided);
+    return expectedBuffer.length === providedBuffer.length
+      && crypto.timingSafeEqual(expectedBuffer, providedBuffer);
   });
 }
 
 function mapStatus(eventType, payload) {
-  const rawStatus = payload?.data?.attributes?.status || '';
+  const attributes = payload?.attributes || payload?.data?.attributes || {};
+  const rawStatus = String(attributes.status || '').toLowerCase();
 
-  if (String(eventType).includes('paid') || rawStatus === 'paid' || rawStatus === 'succeeded') return 'paid';
+  if (String(eventType).includes('paid') || isCheckoutPaid({ data: payload })) return 'paid';
   if (String(eventType).includes('failed') || rawStatus === 'failed') return 'failed';
   if (String(eventType).includes('expired') || rawStatus === 'expired') return 'expired';
-  if (String(eventType).includes('cancelled') || rawStatus === 'cancelled') return 'cancelled';
+  if (String(eventType).includes('cancelled') || rawStatus === 'cancelled' || rawStatus === 'canceled') return 'cancelled';
   return null;
 }
 
-function getCheckoutSession(payload) {
-  return payload?.data?.attributes?.data || payload?.data || payload;
+function getWebhookEvent(payload) {
+  const event = payload?.data || {};
+  const legacyAttributes = event?.attributes || {};
+  const legacyEventType = legacyAttributes.type;
+  const modernEventType = event.type && event.type !== 'event' ? event.type : null;
+
+  return {
+    eventId: event.id || payload?.id || null,
+    eventType: legacyEventType || modernEventType || payload?.type || null,
+    resource: legacyAttributes.data || event.data || payload?.resource || null
+  };
 }
 
 function getCheckoutAttributes(checkoutSession) {
   return checkoutSession?.attributes || {};
 }
 
-async function createLicenseWithRetry(supabase, session, plan) {
-  const expiresAt = plan.durationDays ? addDays(plan.durationDays) : null;
-
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const { data, error } = await supabase
-      .from('licenses')
-      .insert({
-        license_key: generateLicenseKey(plan.id),
-        plan: plan.id,
-        status: 'active',
-        max_devices: plan.maxDevices,
-        expires_at: expiresAt,
-        customer_email: session.customer_email || null,
-        payment_reference: session.reference_number
-      })
-      .select('id, license_key')
-      .single();
-
-    if (!error) {
-      return data;
-    }
-
-    if (error.code !== '23505') {
-      throw error;
-    }
-  }
-
-  throw new Error('license_key_collision');
-}
-
-async function fulfillLicensePayment(supabase, payload, status) {
-  const checkoutSession = getCheckoutSession(payload);
+async function fulfillLicensePayment(supabase, payload, status, checkoutSession) {
   const checkoutAttributes = getCheckoutAttributes(checkoutSession);
   const checkoutId = checkoutSession?.id || null;
   const referenceNumber = checkoutAttributes.reference_number || checkoutAttributes.referenceNumber || null;
@@ -116,7 +82,7 @@ async function fulfillLicensePayment(supabase, payload, status) {
 
   let query = supabase
     .from('license_payment_sessions')
-    .select('id, device_id, plan, amount, currency, status, reference_number, customer_email, license_id')
+    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, reference_number, customer_email, license_id, payment_payload, updated_at')
     .limit(1);
 
   if (paymentSessionId && /^[0-9a-f-]{36}$/i.test(paymentSessionId)) {
@@ -136,73 +102,37 @@ async function fulfillLicensePayment(supabase, payload, status) {
   const session = rows[0];
 
   if (status !== 'paid') {
-    await supabase
+    const paymentPayload = session.payment_payload?.plan_snapshot
+      ? { ...payload, plan_snapshot: session.payment_payload.plan_snapshot }
+      : payload;
+    const { error: updateError } = await supabase
       .from('license_payment_sessions')
-      .update({ status, payment_payload: payload })
+      .update({ status, payment_payload: paymentPayload })
       .eq('id', session.id);
+
+    if (updateError) {
+      throw updateError;
+    }
     return true;
   }
 
   if (session.status === 'paid' && session.license_id) {
-    await supabase
+    const { error: updateError } = await supabase
       .from('license_payment_sessions')
       .update({ payment_payload: payload })
       .eq('id', session.id);
+
+    if (updateError) {
+      throw updateError;
+    }
     return true;
   }
 
-  const plan = await getLicensePlan(session.plan, supabase);
-  if (!plan || plan.amount !== session.amount || plan.currency !== session.currency) {
-    await supabase
-      .from('license_payment_sessions')
-      .update({ status: 'failed', payment_payload: payload })
-      .eq('id', session.id);
-    throw new Error('license_payment_plan_mismatch');
-  }
-
-  await supabase
-    .from('devices')
-    .upsert({
-      device_id: session.device_id,
-      platform: 'android',
-      status: 'licensed',
-      last_seen_at: new Date().toISOString()
-    }, { onConflict: 'device_id' });
-
-  const license = await createLicenseWithRetry(supabase, session, plan);
-
-  await supabase
-    .from('license_activations')
-    .upsert({
-      license_id: license.id,
-      device_id: session.device_id,
-      last_checked_at: new Date().toISOString()
-    }, { onConflict: 'license_id,device_id' });
-
-  await supabase
-    .from('licenses')
-    .update({ activated_at: new Date().toISOString() })
-    .eq('id', license.id);
-
-  await supabase
-    .from('devices')
-    .update({ status: 'licensed', last_seen_at: new Date().toISOString() })
-    .eq('device_id', session.device_id);
-
-  await supabase
-    .from('license_payment_sessions')
-    .update({
-      status: 'paid',
-      license_id: license.id,
-      paid_at: new Date().toISOString(),
-      payment_payload: payload
-    })
-    .eq('id', session.id);
-
+  await fulfillPaidSession(supabase, session, payload);
   return true;
 }
 
-module.exports = async function handler(request, response) {
+async function handler(request, response) {
   if (request.method !== 'POST') {
     response.setHeader('Allow', 'POST');
     sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
@@ -212,6 +142,12 @@ module.exports = async function handler(request, response) {
   const supabase = createClientFromEnv();
   if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
+    return;
+  }
+
+  if (!process.env.PAYMONGO_WEBHOOK_SECRET) {
+    console.error('PayMongo webhook secret is not configured');
+    sendJson(response, 500, { ok: false, status: 'webhook_secret_not_configured' });
     return;
   }
 
@@ -226,26 +162,26 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  let payload;
+  let payload = null;
   try {
     payload = JSON.parse(rawBody || '{}');
   } catch {
-    payload = await readJson(request).catch(() => ({}));
+    sendJson(response, 400, { ok: false, status: 'invalid_json' });
+    return;
   }
 
-  const eventType = payload?.data?.attributes?.type || payload?.type || '';
-  const checkoutSession = getCheckoutSession(payload);
+  const { eventId, eventType, resource: checkoutSession } = getWebhookEvent(payload);
   const paymongoId = checkoutSession?.id || payload?.data?.id || payload?.id;
   const status = mapStatus(eventType, checkoutSession || payload);
 
   if (!paymongoId || !status) {
-    console.warn('PayMongo webhook ignored', { eventType, paymongoId: paymongoId || null, status: status || null });
+    console.warn('PayMongo webhook ignored', { eventId, eventType, paymongoId: paymongoId || null, status: status || null });
     sendJson(response, 200, { ok: true, status: 'ignored' });
     return;
   }
 
   try {
-    const handledLicensePayment = await fulfillLicensePayment(supabase, payload, status);
+    const handledLicensePayment = await fulfillLicensePayment(supabase, payload, status, checkoutSession);
     if (handledLicensePayment) {
       sendJson(response, 200, { ok: true, status: 'license_updated' });
       return;
@@ -278,4 +214,9 @@ module.exports = async function handler(request, response) {
 
   console.warn('PayMongo webhook did not match a license payment session', { eventType, paymongoId, status });
   sendJson(response, 200, { ok: true, status: 'updated' });
-};
+}
+
+module.exports = handler;
+module.exports.getWebhookEvent = getWebhookEvent;
+module.exports.mapStatus = mapStatus;
+module.exports.verifyWebhook = verifyWebhook;
