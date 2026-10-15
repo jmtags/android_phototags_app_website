@@ -113,9 +113,72 @@ const HOME_LICENSE_PLAN_FALLBACK = [
 ];
 const appVersions = [
   {
+    versionName: '0.2.69',
+    versionCode: 80,
+    label: 'Latest release',
+    date: 'October 2026',
+    summary: 'Receiptbooth carousel and template improvements, animated GIF QR downloads, offline transaction sync, reusable coin credit, and independent session and print orientation controls.',
+    sections: [
+      {
+        title: 'Receiptbooth',
+        items: [
+          'Centered the Step 1 template carousel.',
+          'Added smoother swipe and selection animations.',
+          'Added partially visible previous and next templates.',
+          'Added portrait template previews in Step 2.',
+          'Made template lists vertically scrollable on smaller screens.',
+          'Preserved carousel position when selecting templates or cute icons.',
+          'Added an Original/B&W photo toggle.',
+          'Improved receipt photo clarity by reducing heavy filtering.',
+          'Added seven receipt templates: Iron Throne, Star Jedi, Hunter\'s Guild, Captain Snap, Wizarding World, I Want You, and Vote for Me.',
+          'Added the new templates to the Admin receipt-layout editor.'
+        ]
+      },
+      {
+        title: 'GIF And QR Downloads',
+        items: [
+          'Added GIF support to POST /api/upload.',
+          'Added signed GIF uploads to Supabase Storage.',
+          'Added gif_file_path database support and migrations.',
+          'Added GIF preview and download support to the website.',
+          'Added storage cleanup and retention handling.',
+          'Made the JPEG upload and QR code available before GIF processing finishes.',
+          'Added fallback behavior so GIF failures do not prevent the JPEG QR code.',
+          'Reduced GIF resolution for faster generation.',
+          'Fixed portrait GIF width and height handling.',
+          'Replaced the heavier pixel matrix conversion with a faster flat pixel encoder.',
+          'Added detailed GIF generation and upload logs.',
+          'Changed Receiptbooth GIFs to preserve the selected template and decorations while captured photos switch inside one photo region.',
+          'GIF generation now runs in parallel with print preparation.',
+          'GIF creation requires at least two captured photos.'
+        ]
+      },
+      {
+        title: 'Payments And Transactions',
+        items: [
+          'Added a setting to show or hide the payment amount label on the voucher payment page.',
+          'Added reusable coin credit displayed across app pages when the coin reader is enabled.',
+          'Added local payment and voucher transaction tracking.',
+          'Added a small local transaction dashboard.',
+          'Added offline transaction storage and later synchronization with the business portal.'
+        ]
+      },
+      {
+        title: 'Session And Printing',
+        items: [
+          'Separated session UI orientation from print orientation.',
+          'Print orientation now affects only the printed output.',
+          'Added independent session orientation controls.',
+          'Investigated and adjusted image-print handling for Epson L3210 and Canon G1010 printers.',
+          'Kept text-test printing separate from image-print diagnostics.'
+        ]
+      }
+    ]
+  },
+  {
     versionName: '0.2.58',
     versionCode: 69,
-    label: 'Latest release',
+    label: 'Previous release',
     date: 'October 2026',
     summary: 'Security controls, Canon EOS M50 support, Epson borderless geometry improvements, Receiptbooth print-count pricing, supplied receipt templates, and richer layout editors.',
     sections: [
