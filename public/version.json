@@ -1,6 +1,6 @@
 ﻿{
-    "versionCode":  80,
-    "versionName":  "0.2.69",
+    "versionCode":  86,
+    "versionName":  "0.2.75",
     "apkUrl":  "https://phototags.vercel.app/PhotoTags.apk",
     "message":  "A new PhotoTags update is available."
 }
