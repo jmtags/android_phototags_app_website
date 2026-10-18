@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/device/payment-settings",
+      "destination": "/api/device?route=payment-settings"
+    },
+    {
       "source": "/api/device/register",
       "destination": "/api/device?route=register"
     },

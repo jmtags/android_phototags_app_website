@@ -1394,8 +1394,17 @@ const BUSINESS_AUTH_INITIAL = {
 const PAYMONGO_FORM_INITIAL = {
   paymongoPublicKey: '',
   paymongoSecretKey: '',
+  webhookSecret: '',
   qrphEnabled: true,
   webhookEnabled: false
+};
+const PAYMONGO_SETUP_ERRORS = {
+  invalid_paymongo_keys: 'Use public and secret keys from the same PayMongo account and test/live mode. Enter both when replacing keys.',
+  webhook_secret_required: 'Enter the signing secret from your PayMongo webhook, or turn off Webhook enabled.',
+  pending_payments_exist: 'Finish or check pending payments in the app before replacing or removing API keys.',
+  settings_unavailable: 'Payment settings are temporarily unavailable. Please try again.',
+  payment_lookup_failed: 'Pending payments could not be checked. Please try again.',
+  encryption_not_configured: 'Secure payment key storage is not configured. Contact PhotoTags support.'
 };
 const TRANSACTION_FILTER_INITIAL = {
   dateFrom: '',
@@ -1963,6 +1972,7 @@ function BusinessPage() {
       setPaymongoForm({
         paymongoPublicKey: payload.paymentSettings.paymongoPublicKey || '',
         paymongoSecretKey: '',
+        webhookSecret: '',
         qrphEnabled: payload.paymentSettings.qrphEnabled,
         webhookEnabled: payload.paymentSettings.webhookEnabled
       });
@@ -2037,7 +2047,7 @@ function BusinessPage() {
       await loadDashboard();
     } catch (error) {
       setStatus('ready');
-      setMessage(`Could not save PayMongo settings: ${error.message}.`);
+      setMessage(PAYMONGO_SETUP_ERRORS[error.message] || `Could not save PayMongo settings: ${error.message}.`);
     }
   };
 
@@ -2061,7 +2071,7 @@ function BusinessPage() {
       await loadDashboard();
     } catch (error) {
       setStatus('ready');
-      setMessage(`Could not remove PayMongo settings: ${error.message}.`);
+      setMessage(PAYMONGO_SETUP_ERRORS[error.message] || `Could not remove PayMongo settings: ${error.message}.`);
     }
   };
 
@@ -2153,7 +2163,7 @@ function BusinessPage() {
       </section>
 
       <section className="business-status-grid">
-        <article><span>PayMongo</span><strong>{settings.paymongoConnected ? 'Connected' : 'Not connected'}</strong></article>
+        <article><span>PayMongo keys</span><strong>{settings.paymongoConnected ? 'Saved' : 'Not configured'}</strong></article>
         <article><span>QRPH</span><strong>{settings.qrphEnabled ? 'Enabled' : 'Not enabled'}</strong></article>
         <article><span>Linked devices</span><strong>{summary.linkedDevices}</strong></article>
       </section>
@@ -2163,11 +2173,17 @@ function BusinessPage() {
       <section className="business-grid">
         <article className="business-card">
           <h2>PayMongo setup</h2>
+          <p>Save keys from the same PayMongo account and mode (test or live). Paired devices can refresh this setup from their Admin payment settings. Keys stay on the server; payment creation confirms whether PayMongo accepts them.</p>
           <form className="business-form" onSubmit={savePayMongo}>
             <label>Public key<input required value={paymongoForm.paymongoPublicKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoPublicKey: event.target.value })} /></label>
             <label>Secret key<input required={!settings.secretKeySaved} type="password" placeholder={settings.secretKeySaved ? 'Saved - enter a new key to replace' : ''} value={paymongoForm.paymongoSecretKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoSecretKey: event.target.value })} /></label>
             <label className="business-check"><input type="checkbox" checked={paymongoForm.qrphEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, qrphEnabled: event.target.checked })} /> QRPH enabled</label>
+            <p>For automatic confirmation, create a webhook in your PayMongo dashboard using this URL:</p>
+            <code style={{ overflowWrap: 'anywhere' }}>{`${window.location.origin}${dashboard.webhookPath}`}</code>
+            <p>Subscribe to payment.paid, payment.failed, and qrph.expired, then enter its signing secret below. Payment status is also checked directly with PayMongo if a webhook is delayed.</p>
+            <label>Webhook signing secret<input autoComplete="new-password" type="password" placeholder={settings.webhookSecretSaved ? 'Saved - leave blank to keep' : 'Signing secret from your PayMongo webhook'} value={paymongoForm.webhookSecret} onChange={(event) => setPaymongoForm({ ...paymongoForm, webhookSecret: event.target.value })} /></label>
             <label className="business-check"><input type="checkbox" checked={paymongoForm.webhookEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, webhookEnabled: event.target.checked })} /> Webhook enabled</label>
+            <p>When replacing API credentials, enter the corresponding webhook signing secret again or disable the webhook. Finish pending customer payments before replacing or removing keys.</p>
             <div className="business-actions">
               <button className="primary-button" type="submit">Save PayMongo</button>
               <button className="outline-button" type="button" onClick={removePayMongo}>Remove</button>

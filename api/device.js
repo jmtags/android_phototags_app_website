@@ -1,5 +1,6 @@
 const pair = require('../server/device-pair');
 const register = require('../server/device-register');
+const paymentSettings = require('../server/device-payment-settings');
 
 function routeName(request) {
   return request.query?.route || new URL(request.url || '/', 'https://phototags.local').searchParams.get('route');
@@ -7,6 +8,11 @@ function routeName(request) {
 
 module.exports = async function handler(request, response) {
   const route = routeName(request);
+
+  if (route === 'payment-settings') {
+    await paymentSettings(request, response);
+    return;
+  }
 
   if (route === 'register') {
     await register(request, response);

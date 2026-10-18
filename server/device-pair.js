@@ -1,3 +1,5 @@
+const crypto = require('crypto');
+const { tokenHash, publicSettings } = require('./_device-payments');
 const {
   checkRateLimit,
   cleanText,
@@ -54,11 +56,20 @@ module.exports = async function handler(request, response) {
     return;
   }
 
+  const { data: claimed, error: claimError } = await supabase.from('device_pairing_codes')
+    .update({ used_at: new Date().toISOString() }).eq('id', code.id).is('used_at', null)
+    .gt('expires_at', new Date().toISOString()).select('id').maybeSingle();
+  if (claimError || !claimed) {
+    sendJson(response, 409, { ok: false, status: 'invalid_or_expired_code' });
+    return;
+  }
+  const paymentToken = crypto.randomBytes(32).toString('base64url');
   const { error: deviceError } = await supabase
     .from('devices')
     .upsert({
       device_id: deviceId,
       business_id: code.business_id,
+      payment_token_hash: tokenHash(paymentToken),
       app_version: appVersion,
       platform,
       status: 'licensed',
@@ -71,11 +82,9 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  await supabase.from('device_pairing_codes').update({ used_at: new Date().toISOString() }).eq('id', code.id);
-
   const { data: settings } = await supabase
     .from('business_payment_settings')
-    .select('paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled')
+    .select('*')
     .eq('business_id', code.business_id)
     .maybeSingle();
 
@@ -84,7 +93,7 @@ module.exports = async function handler(request, response) {
     status: 'paired',
     businessId: code.business_id,
     businessName: code.businesses?.business_name || null,
-    paymentEnabled: Boolean(settings?.paymongo_public_key && settings?.paymongo_secret_key_encrypted),
-    qrphEnabled: Boolean(settings?.qrph_enabled)
+    paymentToken,
+    ...publicSettings(settings)
   });
 };

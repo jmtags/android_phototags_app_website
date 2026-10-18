@@ -21,6 +21,7 @@ function normalizeSettings(row) {
     paymongoConnected: Boolean(row?.paymongo_public_key && row?.paymongo_secret_key_encrypted),
     paymongoPublicKey: row?.paymongo_public_key || '',
     secretKeySaved: Boolean(row?.paymongo_secret_key_encrypted),
+    webhookSecretSaved: Boolean(row?.webhook_secret_encrypted),
     qrphEnabled: Boolean(row?.qrph_enabled),
     webhookEnabled: Boolean(row?.webhook_enabled),
     updatedAt: row?.updated_at || null
@@ -55,7 +56,7 @@ module.exports = async function handler(request, response) {
     transactionsResult,
     codeResult
   ] = await Promise.all([
-    supabase.from('business_payment_settings').select('paymongo_public_key, paymongo_secret_key_encrypted, qrph_enabled, webhook_enabled, updated_at').eq('business_id', businessId).maybeSingle(),
+    supabase.from('business_payment_settings').select('paymongo_public_key, paymongo_secret_key_encrypted, webhook_secret_encrypted, qrph_enabled, webhook_enabled, updated_at').eq('business_id', businessId).maybeSingle(),
     supabase.from('devices').select('device_id, app_version, platform, status, paired_at, last_seen_at, created_at, updated_at').eq('business_id', businessId).order('last_seen_at', { ascending: false }).limit(100),
     supabase.from('payment_sessions').select('id, device_id, mode, amount, currency, status, paymongo_checkout_url, paid_at, expires_at, created_at, updated_at').eq('business_id', businessId).order('created_at', { ascending: false }).limit(100),
     supabase.from('transactions').select('id, device_id, transaction_id, occurred_at, received_at, mode, payment_method, status, amount_centavos, voucher_code, prints_used, note').eq('business_id', businessId).order('occurred_at', { ascending: false }).limit(1000),
@@ -73,6 +74,7 @@ module.exports = async function handler(request, response) {
     status: 'ready',
     business: normalizeBusiness(auth.business),
     paymentSettings: normalizeSettings(settingsResult.data),
+    webhookPath: `/api/paymongo/webhook?businessId=${encodeURIComponent(businessId)}`,
     activePairingCode: codeResult.data || null,
     devices: devicesResult.data || [],
     payments: paymentsResult.data || [],

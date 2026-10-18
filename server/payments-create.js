@@ -1,171 +1,102 @@
-const {
-  checkRateLimit,
-  cleanText,
-  createClientFromEnv,
-  decryptSecret,
-  paymongoRequest,
-  readJson,
-  sendJson,
-  validateDeviceId,
-  validatePaymentInput
-} = require('./_business-utils');
-
-function safeMetadata(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .slice(0, 20)
-      .map(([key, item]) => [String(key).slice(0, 40), String(item).slice(0, 200)])
-  );
-}
+const { checkRateLimit, cleanText, createClientFromEnv, decryptSecret, paymongoRequest,
+  readJson, sendJson, validateDeviceId, validatePaymentInput } = require('./_business-utils');
+const { authenticateDevice, publicSettings } = require('./_device-payments');
+const { paymentResponse, reconcilePayment } = require('./_native-qrph');
 
 module.exports = async function handler(request, response) {
-  if (request.method !== 'POST') {
-    response.setHeader('Allow', 'POST');
-    sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
-    return;
-  }
-
-  if (!checkRateLimit(request, 'payment_create', 60, 60 * 1000)) {
-    sendJson(response, 429, { ok: false, status: 'rate_limited' });
-    return;
-  }
-
+  if (request.method !== 'POST') return sendJson(response, 405, { ok: false, status: 'method_not_allowed' });
+  if (!checkRateLimit(request, 'payment_create', 60)) return sendJson(response, 429, { ok: false, status: 'rate_limited' });
   const supabase = createClientFromEnv();
-  if (!supabase) {
-    sendJson(response, 500, { ok: false, status: 'server_not_configured' });
-    return;
-  }
-
+  if (!supabase) return sendJson(response, 500, { ok: false, status: 'server_not_configured' });
   let body;
-  try {
-    body = await readJson(request);
-  } catch {
-    sendJson(response, 400, { ok: false, status: 'invalid_json' });
-    return;
-  }
-
-  const deviceId = cleanText(body.deviceId || body.device_id, 200);
+  try { body = await readJson(request); } catch { return sendJson(response, 400, { ok: false, status: 'invalid_json' }); }
+  const deviceId = cleanText(body.deviceId, 200);
   const mode = cleanText(body.mode, 40);
-  const amount = Number(body.amount);
-  const currency = cleanText(body.currency || 'PHP', 8).toUpperCase();
-  const metadata = safeMetadata(body.metadata);
+  const amount = body.amount;
+  const currency = body.currency || 'PHP';
+  const requestId = cleanText(body.requestId, 36);
   const inputError = validatePaymentInput({ amount, currency, mode });
-
-  if (!validateDeviceId(deviceId) || inputError) {
-    sendJson(response, 400, { ok: false, status: inputError || 'invalid_device_id' });
-    return;
+  if (!validateDeviceId(deviceId) || inputError || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    return sendJson(response, 400, { ok: false, status: inputError || 'invalid_payment_request' });
   }
-
-  const { data: device, error: deviceError } = await supabase
-    .from('devices')
-    .select('device_id, business_id, businesses(id, business_name)')
-    .eq('device_id', deviceId)
-    .not('business_id', 'is', null)
-    .maybeSingle();
-
-  if (deviceError || !device?.business_id) {
-    sendJson(response, 404, { ok: false, status: 'device_not_paired' });
-    return;
-  }
-
-  const { data: settings, error: settingsError } = await supabase
-    .from('business_payment_settings')
-    .select('paymongo_secret_key_encrypted, qrph_enabled')
-    .eq('business_id', device.business_id)
-    .maybeSingle();
-
-  if (settingsError || !settings?.paymongo_secret_key_encrypted || !settings.qrph_enabled) {
-    sendJson(response, 409, { ok: false, status: 'payments_not_configured' });
-    return;
-  }
-
-  let secretKey;
-  try {
-    secretKey = decryptSecret(settings.paymongo_secret_key_encrypted);
-  } catch {
-    sendJson(response, 500, { ok: false, status: 'paymongo_secret_unavailable' });
-    return;
-  }
-
-  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-  const siteUrl = (process.env.SITE_URL || `https://${request.headers.host}`).replace(/\/$/, '');
-  let checkout;
-
-  try {
-    checkout = await paymongoRequest(secretKey, '/checkout_sessions', {
-      method: 'POST',
-      body: {
-        data: {
-          attributes: {
-            billing: {},
-            description: `PhotoTags ${mode} print`,
-            line_items: [
-              {
-                currency,
-                amount,
-                name: `PhotoTags ${mode} print`,
-                quantity: 1
-              }
-            ],
-            payment_method_types: ['qrph'],
-            reference_number: metadata.jobId || undefined,
-            success_url: `${siteUrl}/business/payment-success`,
-            cancel_url: `${siteUrl}/business/payment-cancelled`,
-            metadata: {
-              ...metadata,
-              device_id: deviceId,
-              business_id: device.business_id,
-              mode
-            }
-          }
-        }
+  const device = await authenticateDevice(supabase, request, response, deviceId);
+  if (!device) return;
+  const lookup = () => supabase.from('payment_sessions').select('*').eq('business_id', device.business_id)
+    .eq('device_id', deviceId).eq('request_id', requestId).maybeSingle();
+  const respondExisting = async (session) => {
+    if (session.amount !== amount || session.mode !== mode || session.currency !== currency) {
+      return sendJson(response, 409, { ok: false, status: 'request_id_conflict' });
+    }
+    try {
+      session = await reconcilePayment(supabase, session);
+      if (session.status === 'pending' && !session.qr_image_url) {
+        return sendJson(response, 409, { ok: false, status: 'payment_initializing', paymentSessionId: session.id });
       }
+      sendJson(response, 200, paymentResponse(session));
+    } catch {
+      sendJson(response, 503, { ok: false, status: 'payment_status_unavailable', paymentSessionId: session.id });
+    }
+  };
+  const { data: existing, error: lookupError } = await lookup();
+  if (lookupError) return sendJson(response, 503, { ok: false, status: 'payment_lookup_failed' });
+  if (existing) return respondExisting(existing);
+  const { data: settings, error: settingsError } = await supabase.from('business_payment_settings')
+    .select('*').eq('business_id', device.business_id).maybeSingle();
+  if (settingsError) return sendJson(response, 503, { ok: false, status: 'settings_unavailable' });
+  if (!publicSettings(settings).paymentEnabled) return sendJson(response, 409, { ok: false, status: 'payments_not_configured' });
+  let secret;
+  try { secret = decryptSecret(settings.paymongo_secret_key_encrypted); }
+  catch { return sendJson(response, 500, { ok: false, status: 'paymongo_secret_unavailable' }); }
+  // Reserve the request before contacting PayMongo; the unique index serializes retries.
+  const { data: session, error: saveError } = await supabase.from('payment_sessions').insert({
+    business_id: device.business_id, device_id: deviceId, request_id: requestId,
+    mode, amount, currency, status: 'pending', payment_flow: 'qrph',
+    payment_payload: { key_mode: publicSettings(settings).keyMode },
+    expires_at: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  }).select('*').single();
+  if (saveError) {
+    if (saveError.code === '23505') {
+      const { data: duplicate } = await lookup();
+      if (duplicate) return respondExisting(duplicate);
+    }
+    return sendJson(response, 500, { ok: false, status: 'payment_session_save_failed' });
+  }
+  try {
+    const intent = await paymongoRequest(secret, '/payment_intents', { method: 'POST', body: { data: { attributes: {
+      amount, currency, payment_method_allowed: ['qrph'], description: `PhotoTags ${mode}`,
+      metadata: { payment_session_id: session.id, business_id: device.business_id, device_id: deviceId }
+    } } } });
+    if (!intent.data?.id) throw new Error('invalid_intent');
+    const { error } = await supabase.from('payment_sessions').update({ paymongo_payment_id: intent.data.id }).eq('id', session.id);
+    if (error) throw error;
+    session.paymongo_payment_id = intent.data.id;
+    // Public-key calls keep the secret and intent client key entirely on the server.
+    const method = await paymongoRequest(settings.paymongo_public_key, '/payment_methods', {
+      method: 'POST', body: { data: { attributes: { type: 'qrph', expiry_seconds: 1800 } } }
     });
+    if (!method.data?.id) throw new Error('invalid_method');
+    const attached = await paymongoRequest(settings.paymongo_public_key,
+      `/payment_intents/${encodeURIComponent(intent.data.id)}/attach`, {
+        method: 'POST', body: { data: { attributes: {
+          payment_method: method.data.id, client_key: intent.data.attributes.client_key
+        } } }
+      });
+    const qr = attached.data?.attributes?.next_action?.code?.image_url;
+    if (!qr || attached.data.id !== intent.data.id) throw new Error('invalid_qr_response');
+    const { error: qrError } = await supabase.from('payment_sessions').update({ qr_image_url: qr }).eq('id', session.id);
+    if (qrError) throw qrError;
+    // Read status rather than overwriting a fast webhook's paid state.
+    const { data: current, error: readError } = await supabase.from('payment_sessions').select('*').eq('id', session.id).single();
+    if (readError) throw readError;
+    sendJson(response, 201, paymentResponse(current));
   } catch (error) {
-    console.error('PayMongo checkout create failed', error.payload || error.message);
-    sendJson(response, 502, { ok: false, status: 'paymongo_create_failed' });
-    return;
+    if (error.statusCode >= 400 && error.statusCode < 500) {
+      const { error: updateError } = await supabase.from('payment_sessions').update({ status: 'failed' })
+        .eq('id', session.id).eq('status', 'pending');
+      if (!updateError) return sendJson(response, 502, { ok: false, status: 'paymongo_rejected', paymentSessionId: session.id });
+    }
+    // An attach may have succeeded even when its HTTP response was lost. Keep the
+    // reservation for reconciliation, and never silently issue a second QR.
+    sendJson(response, 503, { ok: false, status: 'payment_creation_uncertain', paymentSessionId: session.id });
   }
-
-  const checkoutData = checkout?.data;
-  const attributes = checkoutData?.attributes || {};
-  const checkoutUrl = attributes.checkout_url || attributes.checkoutUrl || attributes.url || null;
-
-  const { data: session, error: sessionError } = await supabase
-    .from('payment_sessions')
-    .insert({
-      business_id: device.business_id,
-      device_id: deviceId,
-      mode,
-      amount,
-      currency,
-      status: 'pending',
-      paymongo_payment_id: checkoutData?.id || null,
-      paymongo_checkout_url: checkoutUrl,
-      payment_payload: {
-        paymongo_id: checkoutData?.id || null,
-        metadata,
-        business_name: device.businesses?.business_name || null
-      },
-      expires_at: expiresAt
-    })
-    .select('id, status, paymongo_checkout_url, expires_at')
-    .single();
-
-  if (sessionError) {
-    sendJson(response, 500, { ok: false, status: 'payment_session_save_failed' });
-    return;
-  }
-
-  sendJson(response, 201, {
-    ok: true,
-    paymentSessionId: session.id,
-    status: session.status,
-    checkoutUrl: session.paymongo_checkout_url,
-    expiresAt: session.expires_at
-  });
 };

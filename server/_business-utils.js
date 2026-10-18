@@ -220,7 +220,7 @@ function validatePaymentInput({ amount, currency, mode }) {
     return 'invalid_currency';
   }
 
-  if (!['photobooth', 'photo_id', 'reprint'].includes(mode)) {
+  if (!['photobooth', 'photo_id', 'receiptbooth', 'reprint'].includes(mode)) {
     return 'invalid_mode';
   }
 
@@ -229,6 +229,7 @@ function validatePaymentInput({ amount, currency, mode }) {
 
 async function paymongoRequest(secretKey, path, options = {}) {
   const response = await fetch(`https://api.paymongo.com/v1${path}`, {
+    signal: AbortSignal.timeout(10000),
     method: options.method || 'GET',
     headers: {
       Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,

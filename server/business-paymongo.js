@@ -37,6 +37,13 @@ module.exports = async function handler(request, response) {
 
   const action = cleanText(body.action, 40);
 
+  if (action === 'remove' || body.paymongoSecretKey || body.paymongo_secret_key) {
+    const { data: pending, error } = await supabase.from('payment_sessions').select('id')
+      .eq('business_id', auth.business.id).eq('status', 'pending').limit(1);
+    if (error) return sendJson(response, 503, { ok: false, status: 'payment_lookup_failed' });
+    if (pending?.length) return sendJson(response, 409, { ok: false, status: 'pending_payments_exist' });
+  }
+
   if (action === 'remove') {
     const { error } = await supabase
       .from('business_payment_settings')
@@ -44,6 +51,7 @@ module.exports = async function handler(request, response) {
         business_id: auth.business.id,
         paymongo_public_key: null,
         paymongo_secret_key_encrypted: null,
+        webhook_secret_encrypted: null,
         qrph_enabled: false,
         webhook_enabled: false
       }, { onConflict: 'business_id' });
@@ -54,25 +62,37 @@ module.exports = async function handler(request, response) {
 
   const publicKey = cleanText(body.paymongoPublicKey || body.paymongo_public_key, 300);
   const secretKey = cleanText(body.paymongoSecretKey || body.paymongo_secret_key, 300);
+  const webhookSecret = cleanText(body.webhookSecret, 300);
   const qrphEnabled = Boolean(body.qrphEnabled ?? body.qrph_enabled);
   const webhookEnabled = Boolean(body.webhookEnabled ?? body.webhook_enabled);
 
-  const { data: existing } = await supabase
+  const { data: existing, error: settingsError } = await supabase
     .from('business_payment_settings')
-    .select('paymongo_secret_key_encrypted')
+    .select('paymongo_public_key, paymongo_secret_key_encrypted, webhook_secret_encrypted')
     .eq('business_id', auth.business.id)
     .maybeSingle();
 
-  if (!publicKey.startsWith('pk_') || (secretKey && !secretKey.startsWith('sk_')) || (!secretKey && !existing?.paymongo_secret_key_encrypted)) {
+  if (settingsError) return sendJson(response, 503, { ok: false, status: 'settings_unavailable' });
+
+  const keyMode = /^pk_(test|live)_\S+$/.exec(publicKey)?.[1];
+  const credentialsChanged = Boolean(secretKey || existing?.paymongo_public_key !== publicKey);
+  if (!keyMode || (secretKey && !secretKey.startsWith(`sk_${keyMode}_`)) || (!secretKey && (!existing?.paymongo_secret_key_encrypted || existing.paymongo_public_key !== publicKey))) {
     sendJson(response, 400, { ok: false, status: 'invalid_paymongo_keys' });
     return;
   }
 
   let encryptedSecret = existing?.paymongo_secret_key_encrypted;
+  // A webhook secret from an old account must not authenticate a replacement account.
+  let encryptedWebhook = credentialsChanged ? null : existing?.webhook_secret_encrypted;
   try {
     encryptedSecret = secretKey ? encryptSecret(secretKey) : encryptedSecret;
+    if (webhookSecret) encryptedWebhook = encryptSecret(webhookSecret);
   } catch {
     sendJson(response, 500, { ok: false, status: 'encryption_not_configured' });
+    return;
+  }
+  if (webhookEnabled && !encryptedWebhook) {
+    sendJson(response, 400, { ok: false, status: 'webhook_secret_required' });
     return;
   }
 
@@ -82,6 +102,7 @@ module.exports = async function handler(request, response) {
       business_id: auth.business.id,
       paymongo_public_key: publicKey,
       paymongo_secret_key_encrypted: encryptedSecret,
+      webhook_secret_encrypted: encryptedWebhook,
       qrph_enabled: qrphEnabled,
       webhook_enabled: webhookEnabled
     }, { onConflict: 'business_id' });
@@ -93,6 +114,7 @@ module.exports = async function handler(request, response) {
       paymongoConnected: true,
       paymongoPublicKey: publicKey,
       secretKeySaved: true,
+      webhookSecretSaved: Boolean(encryptedWebhook),
       qrphEnabled,
       webhookEnabled
     }

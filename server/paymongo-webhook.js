@@ -1,12 +1,13 @@
 const crypto = require('crypto');
 const {
   createClientFromEnv,
+  decryptSecret,
   sendJson
 } = require('./_business-utils');
 const { fulfillPaidSession, isCheckoutPaid } = require('./license-payments');
+const { reconcilePayment } = require('./_native-qrph');
 
-function verifyWebhook(request, rawBody) {
-  const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
+function verifyWebhook(request, rawBody, secret = process.env.PAYMONGO_WEBHOOK_SECRET) {
 
   if (!secret) {
     return false;
@@ -63,6 +64,28 @@ function getWebhookEvent(payload) {
     eventType: legacyEventType || modernEventType || payload?.type || null,
     resource: legacyAttributes.data || event.data || payload?.resource || null
   };
+}
+
+async function handleBusinessWebhook(supabase, businessId, payload, response) {
+  const { eventType, resource } = getWebhookEvent(payload);
+  if (!['payment.paid', 'payment.failed', 'qrph.expired'].includes(eventType)) {
+    return sendJson(response, 200, { ok: true, status: 'ignored' });
+  }
+  const intentId = resource?.attributes?.payment_intent_id
+    || (resource?.type === 'payment_intent' ? resource.id : null);
+  if (!intentId) return sendJson(response, 200, { ok: true, status: 'ignored' });
+  const { data: session, error } = await supabase.from('payment_sessions').select('*')
+    .eq('business_id', businessId).eq('payment_flow', 'qrph').eq('paymongo_payment_id', intentId).maybeSingle();
+  if (error) return sendJson(response, 500, { ok: false, status: 'webhook_lookup_failed' });
+  if (!session) return sendJson(response, 200, { ok: true, status: 'ignored' });
+  try {
+    // Fetch canonical provider status and validate amount/currency; never trust
+    // metadata or an event name as proof that this session was paid.
+    await reconcilePayment(supabase, session);
+    sendJson(response, 200, { ok: true, status: 'updated' });
+  } catch {
+    sendJson(response, 503, { ok: false, status: 'payment_status_unavailable' });
+  }
 }
 
 function getCheckoutAttributes(checkoutSession) {
@@ -145,7 +168,20 @@ async function handler(request, response) {
     return;
   }
 
-  if (!process.env.PAYMONGO_WEBHOOK_SECRET) {
+  const businessId = request.query?.businessId || new URL(request.url || '/', 'https://phototags.local').searchParams.get('businessId');
+  let signingSecret = process.env.PAYMONGO_WEBHOOK_SECRET;
+  if (businessId) {
+    if (!/^[0-9a-f-]{36}$/i.test(businessId)) return sendJson(response, 400, { ok: false, status: 'invalid_business_id' });
+    const { data: settings, error } = await supabase.from('business_payment_settings')
+      .select('webhook_secret_encrypted, webhook_enabled').eq('business_id', businessId).maybeSingle();
+    if (error) return sendJson(response, 503, { ok: false, status: 'settings_unavailable' });
+    if (!settings?.webhook_enabled || !settings.webhook_secret_encrypted) {
+      return sendJson(response, 401, { ok: false, status: 'webhook_not_configured' });
+    }
+    try { signingSecret = decryptSecret(settings.webhook_secret_encrypted); }
+    catch { return sendJson(response, 500, { ok: false, status: 'webhook_secret_unavailable' }); }
+  }
+  if (!signingSecret) {
     console.error('PayMongo webhook secret is not configured');
     sendJson(response, 500, { ok: false, status: 'webhook_secret_not_configured' });
     return;
@@ -157,7 +193,7 @@ async function handler(request, response) {
   }
   const rawBody = Buffer.concat(chunks).toString('utf8');
 
-  if (!verifyWebhook(request, rawBody)) {
+  if (!verifyWebhook(request, rawBody, signingSecret)) {
     sendJson(response, 401, { ok: false, status: 'invalid_signature' });
     return;
   }
@@ -169,6 +205,8 @@ async function handler(request, response) {
     sendJson(response, 400, { ok: false, status: 'invalid_json' });
     return;
   }
+
+  if (businessId) return handleBusinessWebhook(supabase, businessId, payload, response);
 
   const { eventId, eventType, resource: checkoutSession } = getWebhookEvent(payload);
   const paymongoId = checkoutSession?.id || payload?.data?.id || payload?.id;
@@ -204,6 +242,8 @@ async function handler(request, response) {
   const { error } = await supabase
     .from('payment_sessions')
     .update(updates)
+    .eq('payment_flow', 'checkout')
+    .neq('status', 'paid')
     .eq('paymongo_payment_id', paymongoId);
 
   if (error) {
@@ -220,3 +260,4 @@ module.exports = handler;
 module.exports.getWebhookEvent = getWebhookEvent;
 module.exports.mapStatus = mapStatus;
 module.exports.verifyWebhook = verifyWebhook;
+module.exports.handleBusinessWebhook = handleBusinessWebhook;
