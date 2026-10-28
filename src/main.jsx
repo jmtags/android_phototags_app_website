@@ -32,6 +32,7 @@ import {
   X
 } from 'lucide-react';
 import './styles.css';
+import SupportContact from './SupportContact';
 
 const ADMIN_USERNAME = 'admin';
 const ADMIN_PASSWORD = 'phototags2026';
@@ -1024,9 +1025,12 @@ function App() {
 
       <ReviewSection />
 
+      <SupportContact />
+
       <footer className="site-footer">
         <span>PhotoTags</span>
         <div>
+          <a href="mailto:support@phototags.app">Technical support: support@phototags.app</a>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/use-policy">Use Policy</a>
         </div>

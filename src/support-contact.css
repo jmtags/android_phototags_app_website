@@ -1,0 +1,44 @@
+.technical-support {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 24px;
+  margin-top: clamp(40px, 6vw, 72px);
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid rgba(0, 199, 119, 0.26);
+  border-radius: 12px;
+  background: rgba(0, 199, 119, 0.06);
+}
+
+.technical-support > div {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+
+.technical-support h2 {
+  margin: 0 0 12px;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+}
+
+.technical-support p:last-child {
+  max-width: 720px;
+  margin: 0;
+  color: rgba(244, 248, 255, 0.76);
+  line-height: 1.7;
+}
+
+.technical-support-email {
+  max-width: 100%;
+  min-width: 0;
+  white-space: normal;
+}
+
+.technical-support-email span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.technical-support-email svg {
+  flex-shrink: 0;
+}
