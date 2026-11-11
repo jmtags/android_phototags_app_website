@@ -179,6 +179,37 @@ const appVersions = [
     ]
   },
   {
+    versionName: '0.2.75',
+    versionCode: 86,
+    label: 'Previous release',
+    date: 'October 18, 2026',
+    summary: 'Larger cute icons, simpler locked Receiptbooth setup, automatic Quick Setup saving, and Bluetooth thermal printing support.',
+    sections: [
+      {
+        title: 'Cute Icons And Receiptbooth',
+        items: [
+          'Enlarge cute icons up to the layout\'s shorter side in both Photobooth and Receiptbooth.',
+          'Keep larger icon sizes when saving and reopening Admin templates.',
+          'Hide the template section and blank preview in Receiptbooth Step 1 when the Admin receipt template is locked.'
+        ]
+      },
+      {
+        title: 'Quick Setup',
+        items: [
+          'Save Quick Setup selections automatically, including the selected printer and print orientation.',
+          'Add voucher payment settings, Photobooth template visibility controls, and cute icon group visibility controls.'
+        ]
+      },
+      {
+        title: 'Bluetooth Printing',
+        items: [
+          'Support paired Bluetooth thermal printers, including VOZY G80.',
+          'Offer Quality and Fast Bluetooth transfer modes.'
+        ]
+      }
+    ]
+  },
+  {
     versionName: '0.2.69',
     versionCode: 80,
     label: 'Previous release',
@@ -1878,6 +1909,8 @@ function BusinessPage() {
   const [mode, setMode] = useState('login');
   const [authForm, setAuthForm] = useState(BUSINESS_AUTH_INITIAL);
   const [paymongoForm, setPaymongoForm] = useState(PAYMONGO_FORM_INITIAL);
+  const [paymongoAction, setPaymongoAction] = useState(null);
+  const [paymongoToast, setPaymongoToast] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [status, setStatus] = useState('loading');
   const [message, setMessage] = useState('');
@@ -1896,7 +1929,7 @@ function BusinessPage() {
       }
 
       setDashboard(payload);
-      setPaymongoForm({
+      if (!silent) setPaymongoForm({
         paymongoPublicKey: payload.paymentSettings.paymongoPublicKey || '',
         paymongoSecretKey: '',
         webhookSecret: '',
@@ -1917,7 +1950,7 @@ function BusinessPage() {
   }, []);
 
   useEffect(() => {
-    if (!dashboard) {
+    if (!dashboard || paymongoAction) {
       return undefined;
     }
 
@@ -1926,7 +1959,13 @@ function BusinessPage() {
     }, 30000);
 
     return () => window.clearInterval(refreshId);
-  }, [dashboard?.business?.id]);
+  }, [dashboard?.business?.id, paymongoAction]);
+
+  useEffect(() => {
+    if (!paymongoToast || paymongoToast.type === 'loading') return undefined;
+    const timeoutId = window.setTimeout(() => setPaymongoToast(null), paymongoToast.type === 'error' ? 10000 : 6000);
+    return () => window.clearTimeout(timeoutId);
+  }, [paymongoToast]);
 
   const submitAuth = async (event) => {
     event.preventDefault();
@@ -1955,12 +1994,15 @@ function BusinessPage() {
 
   const savePayMongo = async (event) => {
     event.preventDefault();
-    setStatus('loading');
+    if (paymongoAction) return;
+    setPaymongoAction('saving');
+    setPaymongoToast({ type: 'loading', text: 'Saving PayMongo settings...' });
     setMessage('');
 
     try {
       const response = await fetch('/api/business/paymongo', {
         method: 'POST',
+        signal: AbortSignal.timeout(20000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(paymongoForm)
       });
@@ -1970,21 +2012,28 @@ function BusinessPage() {
         throw new Error(payload.status || 'save_failed');
       }
 
-      setMessage('PayMongo settings saved.');
-      await loadDashboard();
+      setDashboard((current) => ({ ...current, paymentSettings: { ...current.paymentSettings, ...payload.paymentSettings } }));
+      setPaymongoForm((current) => ({ ...current, paymongoSecretKey: '', webhookSecret: '' }));
+      setPaymongoToast({ type: 'success', text: 'PayMongo settings saved successfully.' });
     } catch (error) {
-      setStatus('ready');
-      setMessage(PAYMONGO_SETUP_ERRORS[error.message] || `Could not save PayMongo settings: ${error.message}.`);
+      const text = PAYMONGO_SETUP_ERRORS[error.message] || 'Could not confirm your PayMongo settings were saved. Check your connection and refresh before trying again.';
+      setMessage(text);
+      setPaymongoToast({ type: 'error', text });
+    } finally {
+      setPaymongoAction(null);
     }
   };
 
   const removePayMongo = async () => {
-    setStatus('loading');
+    if (paymongoAction) return;
+    setPaymongoAction('removing');
+    setPaymongoToast({ type: 'loading', text: 'Removing PayMongo credentials...' });
     setMessage('');
 
     try {
       const response = await fetch('/api/business/paymongo', {
         method: 'POST',
+        signal: AbortSignal.timeout(20000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'remove' })
       });
@@ -1994,11 +2043,18 @@ function BusinessPage() {
         throw new Error(payload.status || 'remove_failed');
       }
 
-      setMessage('PayMongo credentials removed.');
-      await loadDashboard();
+      setDashboard((current) => ({ ...current, paymentSettings: {
+        ...current.paymentSettings, paymongoConnected: false, paymongoPublicKey: '',
+        secretKeySaved: false, webhookSecretSaved: false, qrphEnabled: false, webhookEnabled: false
+      } }));
+      setPaymongoForm({ ...PAYMONGO_FORM_INITIAL, qrphEnabled: false });
+      setPaymongoToast({ type: 'success', text: 'PayMongo credentials removed successfully.' });
     } catch (error) {
-      setStatus('ready');
-      setMessage(PAYMONGO_SETUP_ERRORS[error.message] || `Could not remove PayMongo settings: ${error.message}.`);
+      const text = PAYMONGO_SETUP_ERRORS[error.message] || 'Could not confirm your PayMongo credentials were removed. Refresh before trying again.';
+      setMessage(text);
+      setPaymongoToast({ type: 'error', text });
+    } finally {
+      setPaymongoAction(null);
     }
   };
 
@@ -2077,7 +2133,7 @@ function BusinessPage() {
           <img src="/assets/logo-dark.png" alt="" />
           <span>PhotoTags</span>
         </a>
-        <button className="outline-button" type="button" onClick={logout}>Log out</button>
+        <button className="outline-button" type="button" onClick={logout} disabled={Boolean(paymongoAction)}>Log out</button>
       </header>
 
       <section className="business-hero">
@@ -2101,7 +2157,8 @@ function BusinessPage() {
         <article className="business-card">
           <h2>PayMongo setup</h2>
           <p>Save keys from the same PayMongo account and mode (test or live). Paired devices can refresh this setup from their Admin payment settings. Keys stay on the server; payment creation confirms whether PayMongo accepts them.</p>
-          <form className="business-form" onSubmit={savePayMongo}>
+          <form className="business-form" onSubmit={savePayMongo} aria-busy={Boolean(paymongoAction)}>
+            <fieldset className="business-payment-fields" disabled={Boolean(paymongoAction)}>
             <label>Public key<input required value={paymongoForm.paymongoPublicKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoPublicKey: event.target.value })} /></label>
             <label>Secret key<input required={!settings.secretKeySaved} type="password" placeholder={settings.secretKeySaved ? 'Saved - enter a new key to replace' : ''} value={paymongoForm.paymongoSecretKey} onChange={(event) => setPaymongoForm({ ...paymongoForm, paymongoSecretKey: event.target.value })} /></label>
             <label className="business-check"><input type="checkbox" checked={paymongoForm.qrphEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, qrphEnabled: event.target.checked })} /> QRPH enabled</label>
@@ -2112,9 +2169,16 @@ function BusinessPage() {
             <label className="business-check"><input type="checkbox" checked={paymongoForm.webhookEnabled} onChange={(event) => setPaymongoForm({ ...paymongoForm, webhookEnabled: event.target.checked })} /> Webhook enabled</label>
             <p>When replacing API credentials, enter the corresponding webhook signing secret again or disable the webhook. Finish pending customer payments before replacing or removing keys.</p>
             <div className="business-actions">
-              <button className="primary-button" type="submit">Save PayMongo</button>
-              <button className="outline-button" type="button" onClick={removePayMongo}>Remove</button>
+              <button className="primary-button" type="submit" disabled={Boolean(paymongoAction)}>
+                {paymongoAction === 'saving' ? <Loader2 size={18} className="spin" aria-hidden="true" /> : null}
+                {paymongoAction === 'saving' ? 'Saving...' : 'Save PayMongo'}
+              </button>
+              <button className="outline-button" type="button" onClick={removePayMongo} disabled={Boolean(paymongoAction)}>
+                {paymongoAction === 'removing' ? <Loader2 size={18} className="spin" aria-hidden="true" /> : null}
+                {paymongoAction === 'removing' ? 'Removing...' : 'Remove'}
+              </button>
             </div>
+            </fieldset>
           </form>
         </article>
 
@@ -2129,7 +2193,7 @@ function BusinessPage() {
           ) : (
             <p className="queue-empty">No active pairing code.</p>
           )}
-          <button className="primary-button" type="button" onClick={generatePairingCode}>Generate Pairing Code</button>
+          <button className="primary-button" type="button" onClick={generatePairingCode} disabled={Boolean(paymongoAction)}>Generate Pairing Code</button>
         </article>
       </section>
 
@@ -2166,6 +2230,14 @@ function BusinessPage() {
           )) : <p className="queue-empty">No payment sessions yet.</p>}
         </div>
       </section>
+      {paymongoToast ? (
+        <div className={`business-toast business-toast-${paymongoToast.type}`} role={paymongoToast.type === 'error' ? 'alert' : 'status'} aria-atomic="true">
+          {paymongoToast.type === 'loading' ? <Loader2 size={20} className="spin" aria-hidden="true" /> :
+            paymongoToast.type === 'success' ? <BadgeCheck size={20} aria-hidden="true" /> : <AlertCircle size={20} aria-hidden="true" />}
+          <span>{paymongoToast.text}</span>
+          <button type="button" aria-label="Dismiss notification" onClick={() => setPaymongoToast(null)}><X size={18} aria-hidden="true" /></button>
+        </div>
+      ) : null}
     </main>
   );
 }
