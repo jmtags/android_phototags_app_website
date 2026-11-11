@@ -76,13 +76,28 @@ async function main(){
     let status=200,headers={},body='';const response={setHeader(k,v){headers[k]=v;},end(v){body=v||'';}};Object.defineProperty(response,'statusCode',{get:()=>status,set:v=>status=v});
     await handler({method:request.method(),url:request.url(),body:request.postDataJSON(),headers:{...request.headers(),host:'localhost:4186','x-forwarded-for':crypto.randomUUID()}},response);await route.fulfill({status,headers,body});
   });
-  const adminPage=await adminContext.newPage();await adminPage.goto('http://localhost:4186/admin');
+  const lightRequests=[];
+  const adminPage=await adminContext.newPage();
+  adminPage.on('request',request=>{if(request.url().includes('/api/light?'))lightRequests.push(request.url());});
+  await adminPage.goto('http://localhost:4186/admin');
   await adminPage.getByRole('button',{name:'PhotoTags Light',exact:true}).click();await expect(adminPage.getByRole('heading',{name:'PhotoTags Light',exact:true,level:2})).toBeVisible();
+  const light=adminPage.locator('.light-admin');
+  await expect(light.getByRole('navigation',{name:'PhotoTags Light sections'}).getByRole('button')).toHaveText(['Overview','Licenses','Installations','Plans','Payments']);
+  await expect(light.locator('.light-summary')).toContainText('Active Light licenses');
+  await light.getByRole('button',{name:'Licenses',exact:true}).click();
+  await expect(light.locator('tbody')).toContainText(grant.data.licenseKey);
+  await light.getByLabel('Customer email',{exact:true}).fill('admin-fixture@example.test');
+  await light.getByRole('button',{name:'Create Light license',exact:true}).click();
+  await expect(light.locator('tbody')).toContainText('admin-fixture@example.test');
   await adminPage.getByRole('button',{name:'Installations',exact:true}).click();await expect(adminPage.locator('.light-admin tbody')).toContainText('My PhotoTags Light booth');
   await adminPage.getByRole('button',{name:'Plans',exact:true}).click();await expect(adminPage.getByRole('button',{name:'Save Light plan'})).toHaveCount(3);
   await adminPage.screenshot({path:path.join(booth,'artifacts/light-admin-plans.png'),fullPage:true});
+  await light.getByRole('button',{name:'Payments',exact:true}).click();
+  await expect(light.getByRole('columnheader',{name:'Reference / customer',exact:true})).toBeVisible();
+  expect(lightRequests.length).toBeGreaterThan(0);
+  expect(lightRequests.every(url=>new URL(url).origin==='http://localhost:4185' && new URL(url).searchParams.get('route')==='admin')).toBe(true);
   await adminPage.goto('http://localhost:4186/light');await expect(adminPage.getByRole('heading',{name:'Light license terms',exact:true})).toBeVisible();
-  console.log('PASS: separate website Light admin navigation, installations, plans and public terms page.');
+  console.log('PASS: all five Light admin tabs, fixture-only license issuance, separate service origin and public terms page. No production admin action or payment was tested.');
  }finally{await browser?.close();await vite?.close();await website?.close();await pg.close();delete process.env.VITE_LIGHT_LICENSING_ENABLED;delete process.env.VITE_LIGHT_API_ORIGIN;delete process.env.VITE_LIGHT_PUBLIC_KEY_JWK;}
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

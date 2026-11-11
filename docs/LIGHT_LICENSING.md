@@ -17,6 +17,16 @@ Source implementation and automated checks do not activate production licensing.
 
 On iPhone/iPad, activate from the Home Screen app. Checkout may open Safari; after paying, return to the **original Home Screen app** and tap **Check license / payment**. A different browser installation cannot claim its payment because the request must prove possession of the original installation key.
 
+## Main website release verification
+
+Keep the main website's Vercel project rooted at the repository root. Only the separate Light API project uses `light-service/`. Merge this frontend into the main website's `main` branch to trigger its normal production build; deploying the API alone cannot add the admin navigation.
+
+The configured production service origin is `https://phototagslightwebsite-light-service.vercel.app`. Set the public build variable `VITE_LIGHT_API_ORIGIN` to that origin in the main website's Production environment before its production build. It is compiled into the JavaScript bundle; changing the environment variable does not update an older deployment. Do not put server credentials in any `VITE_` variable.
+
+After deployment, verify `/admin` contains **PhotoTags Light** and its **Overview, Licenses, Installations, Plans, Payments** tabs. Check that its browser requests target the separate service's `/api/light?route=admin`, rather than the APK API. The service must allow `https://www.phototags.app` (and `https://phototags.app` if used) in `LIGHT_ALLOWED_ORIGINS` and allow the `X-Admin-Password` header in CORS preflights.
+
+Public `plans` returning HTTP 200 with an empty list means there are no active public sale plans. It does not establish that admin credentials, signing, webhook configuration, paid fulfillment or booth enforcement are ready. An unauthenticated admin request should return HTTP 401. Successful authenticated reads and writes must be checked separately by the authorized operator; do not infer them from public availability or local fixture tests. Leave plans and booth enforcement disabled until their separate acceptance checks pass.
+
 ## Isolation and behavior
 
 - All Light data is in `light_plans`, `light_installations`, `light_licenses`, `light_activations`, `light_payments`, `light_auth_nonces` and `light_audit`. The service imports no APK business/payment/license helper. Android keys cannot activate Light, and Light keys do not exist in the Android license table.
