@@ -2247,6 +2247,81 @@ button:disabled {
   gap: 14px;
 }
 
+.business-payment-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.business-payment-fields:disabled input {
+  opacity: 0.65;
+}
+
+.business-toast {
+  position: fixed;
+  right: clamp(16px, 4vw, 34px);
+  bottom: clamp(16px, 4vw, 34px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  background: rgba(8, 15, 27, 0.98);
+  color: #fff;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.business-toast > svg {
+  flex-shrink: 0;
+}
+
+.business-toast span {
+  flex: 1;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.business-toast-success {
+  border-color: rgba(0, 199, 119, 0.5);
+  background: rgba(5, 35, 26, 0.98);
+}
+
+.business-toast-success > svg {
+  color: #00d887;
+}
+
+.business-toast-error {
+  border-color: rgba(255, 76, 141, 0.5);
+}
+
+.business-toast-error > svg {
+  color: #ff4c8d;
+}
+
+.business-toast button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.business-toast button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 .business-form label {
   display: grid;
   gap: 8px;
