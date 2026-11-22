@@ -266,25 +266,24 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
     return session;
   }
 
-  const plan = await getLicensePlan(session.plan, supabase, { includeInactive: true });
+  // Fulfill the terms recorded when this checkout was created. A later catalog
+  // edit or removal must not strand a payment already accepted by PayMongo.
+  const planSnapshot = session.payment_payload?.plan_snapshot || {};
+  const hasSavedTerms = Object.prototype.hasOwnProperty.call(planSnapshot, 'duration_days')
+    && Object.prototype.hasOwnProperty.call(planSnapshot, 'max_devices');
+  if (Object.keys(planSnapshot).length && !hasSavedTerms) throw new Error('license_payment_plan_mismatch');
+  const plan = hasSavedTerms
+    ? { id: session.plan, durationDays: planSnapshot.duration_days, maxDevices: planSnapshot.max_devices }
+    : await getLicensePlan(session.plan, supabase, { includeInactive: true });
   const paidCheckout = getPaidCheckoutDetails(checkoutPayload);
   if (!isCheckoutPaid(checkoutPayload)
     || !plan
+    || !(plan.durationDays === null || Number.isInteger(plan.durationDays) && plan.durationDays >= 1 && plan.durationDays <= 36500)
+    || !Number.isInteger(plan.maxDevices) || plan.maxDevices < 1 || plan.maxDevices > 1000
     || paidCheckout.amount !== session.amount
     || paidCheckout.currency !== session.currency) {
     throw new Error('license_payment_plan_mismatch');
   }
-
-  const planSnapshot = session.payment_payload?.plan_snapshot || {};
-  const purchasedPlan = {
-    ...plan,
-    durationDays: Object.prototype.hasOwnProperty.call(planSnapshot, 'duration_days')
-      ? planSnapshot.duration_days
-      : plan.durationDays,
-    maxDevices: Object.prototype.hasOwnProperty.call(planSnapshot, 'max_devices')
-      ? planSnapshot.max_devices
-      : plan.maxDevices
-  };
 
   const deviceResult = await supabase
     .from('devices')
@@ -298,7 +297,7 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
     throw deviceResult.error;
   }
 
-  const license = await createLicenseWithRetry(supabase, session, purchasedPlan);
+  const license = await createLicenseWithRetry(supabase, session, plan);
 
   const activationResult = await supabase
     .from('license_activations')

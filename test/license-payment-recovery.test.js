@@ -260,6 +260,37 @@ test('duplicate and concurrent fulfillment issue one license and bind the device
   assert.deepEqual(db.tables.license_payment_sessions[0].payment_payload.plan_snapshot, { duration_days: 30, max_devices: 1 });
 });
 
+test('paid checkout keeps its purchased terms when the plan is removed from the catalog', async () => {
+  setup();
+  db.tables.license_plan_settings = [{ id: 'lifetime', name: 'Lifetime', amount: 100000,
+    currency: 'PHP', duration_days: null, max_devices: 5, active: true, features: [] }];
+  const result = await call(checkLicense, { deviceId: DEVICE, platform: 'android' });
+  assert.equal(result.licensed, true);
+  assert.equal(db.tables.licenses.length, 1);
+  assert.equal(db.tables.licenses[0].plan, 'monthly');
+  assert.equal(db.tables.licenses[0].max_devices, 1);
+  const remaining = Date.parse(db.tables.licenses[0].expires_at) - Date.now();
+  assert.ok(remaining > 29 * 86400000 && remaining <= 30 * 86400000);
+});
+
+test('legacy checkout without saved terms still uses its existing plan', async () => {
+  setup([session({ payment_payload: null })]);
+  const result = await call(checkLicense, { deviceId: DEVICE, platform: 'android' });
+  assert.equal(result.licensed, true);
+  assert.equal(db.tables.licenses[0].plan, 'monthly');
+  assert.equal(db.tables.licenses[0].max_devices, 1);
+});
+
+for (const snapshot of [{ duration_days: 30 }, { duration_days: -1, max_devices: 1 },
+  { duration_days: 30, max_devices: 0 }, { duration_days: null, max_devices: 'unlimited' }]) {
+  test(`removed plan cannot be fulfilled from invalid saved terms ${JSON.stringify(snapshot)}`, async () => {
+    setup([session({ plan: 'retired', payment_payload: { plan_snapshot: snapshot } })]);
+    await assert.rejects(payments.reconcileLicensePayment(db, session({ plan: 'retired', payment_payload: { plan_snapshot: snapshot } })));
+    assert.equal(db.tables.licenses.length, 0);
+    assert.equal(db.tables.license_activations.length, 0);
+  });
+}
+
 const invalidPayments = [
   ['wrong amount', resource => { resource.attributes.payments[0].attributes.amount = 29999; }],
   ['wrong currency', resource => { resource.attributes.payments[0].attributes.currency = 'USD'; }],
