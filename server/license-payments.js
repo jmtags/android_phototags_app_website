@@ -47,6 +47,7 @@ async function paymongoRequest(secretKey, path, options = {}) {
   const response = await fetch(`https://api.paymongo.com/${apiVersion}${path}`, {
     method: options.method || 'GET',
     headers,
+    signal: options.signal,
     body: options.body ? JSON.stringify(options.body) : undefined
   });
   const payload = await response.json().catch(() => ({}));
@@ -241,14 +242,34 @@ async function createLicenseWithRetry(supabase, session, plan) {
   throw error;
 }
 
+function assertLicenseCheckoutIdentity(session, checkoutPayload) {
+  const checkout = getCheckoutResource(checkoutPayload);
+  const attributes = checkout.attributes || {};
+  const metadata = attributes.metadata || {};
+  const reference = attributes.reference_number || attributes.referenceNumber;
+  if (!checkout.id?.startsWith('cs_')
+    || (checkout.type && checkout.type !== 'checkout_session')
+    || (session.paymongo_checkout_session_id && checkout.id !== session.paymongo_checkout_session_id)
+    || (reference && reference !== session.reference_number)
+    || (metadata.product && metadata.product !== 'phototags_license')
+    || (metadata.payment_session_id && metadata.payment_session_id !== session.id)
+    || (metadata.paymentSessionId && metadata.paymentSessionId !== session.id)
+    || (metadata.device_id && metadata.device_id !== session.device_id)
+    || (metadata.plan && metadata.plan !== session.plan)) {
+    throw new Error('license_payment_checkout_mismatch');
+  }
+}
+
 async function fulfillPaidSession(supabase, session, checkoutPayload) {
+  assertLicenseCheckoutIdentity(session, checkoutPayload);
   if (session.status === 'paid' && session.license_id) {
     return session;
   }
 
   const plan = await getLicensePlan(session.plan, supabase, { includeInactive: true });
   const paidCheckout = getPaidCheckoutDetails(checkoutPayload);
-  if (!plan
+  if (!isCheckoutPaid(checkoutPayload)
+    || !plan
     || paidCheckout.amount !== session.amount
     || paidCheckout.currency !== session.currency) {
     throw new Error('license_payment_plan_mismatch');
@@ -315,7 +336,7 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
       status: 'paid',
       license_id: license.id,
       paid_at: new Date().toISOString(),
-      payment_payload: checkoutPayload
+      payment_payload: { ...checkoutPayload, plan_snapshot: planSnapshot }
     })
     .eq('id', session.id)
     .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, license_id, reference_number, updated_at')
@@ -326,6 +347,57 @@ async function fulfillPaidSession(supabase, session, checkoutPayload) {
   }
 
   return data;
+}
+
+// Both the checkout page and installed APK can recover a missed webhook. Only a
+// server-side provider response for this saved checkout can fulfill the purchase.
+async function reconcileLicensePayment(supabase, session) {
+  if (session.license_id || !session.paymongo_checkout_session_id) return session;
+  const secretKey = process.env.PAYMONGO_SECRET_KEY;
+  if (!secretKey) return session;
+
+  try {
+    const checkout = await paymongoRequest(
+      secretKey,
+      `/checkout_sessions/${encodeURIComponent(session.paymongo_checkout_session_id)}`,
+      { apiVersion: 'v1', signal: AbortSignal.timeout(8000) }
+    );
+    return isCheckoutPaid(checkout) ? await fulfillPaidSession(supabase, session, checkout) : session;
+  } finally {
+    // Rotate bounded device recovery through abandoned checkouts too. Touching
+    // only the timestamp cannot overwrite a concurrent payment confirmation.
+    const { error } = await supabase.from('license_payment_sessions')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', session.id)
+      .is('license_id', null);
+    if (error) console.error('License recovery timestamp update failed', error.code || error.message);
+  }
+}
+
+async function reconcileDeviceLicensePayments(supabase, deviceId) {
+  if (!process.env.PAYMONGO_SECRET_KEY) return false;
+  const { data: sessions, error } = await supabase
+    .from('license_payment_sessions')
+    .select('*')
+    .eq('device_id', deviceId)
+    .is('license_id', null)
+    .not('paymongo_checkout_session_id', 'is', null)
+    .order('updated_at', { ascending: true })
+    .limit(3);
+  if (error) throw error;
+
+  // Bound recovery work so normal APK checks still fit the client's read timeout.
+  const results = await Promise.allSettled((sessions || []).map((session) =>
+    reconcileLicensePayment(supabase, session)));
+  let recovered = false;
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      recovered ||= Boolean(result.value.license_id);
+    } else {
+      console.error('License payment recovery failed', result.reason?.code || result.reason?.message);
+    }
+  }
+  return recovered;
 }
 
 function isAdmin(request) {
@@ -661,7 +733,6 @@ async function checkStatus(request, response) {
   }
 
   const supabase = createClientFromEnv();
-  const secretKey = process.env.PAYMONGO_SECRET_KEY;
   if (!supabase) {
     sendJson(response, 500, { ok: false, status: 'server_not_configured' });
     return;
@@ -698,22 +769,13 @@ async function checkStatus(request, response) {
   let currentSession = session;
   let status = currentSession.status;
 
-  const needsReconciliation = !currentSession.license_id && ['pending', 'expired', 'paid'].includes(status);
-  if (needsReconciliation && secretKey && currentSession.paymongo_checkout_session_id) {
-    try {
-      const checkout = await paymongoRequest(
-        secretKey,
-        `/checkout_sessions/${encodeURIComponent(currentSession.paymongo_checkout_session_id)}`,
-        { apiVersion: 'v1' }
-      );
-
-      if (isCheckoutPaid(checkout)) {
-        currentSession = await fulfillPaidSession(supabase, currentSession, checkout);
-        status = currentSession.status;
-      }
-    } catch (checkoutError) {
-      console.error('PayMongo checkout status fallback failed', checkoutError.payload || checkoutError.message);
-    }
+  try {
+    currentSession = await reconcileLicensePayment(supabase, currentSession);
+    status = currentSession.status;
+  } catch (checkoutError) {
+    console.error('PayMongo checkout status fallback failed', checkoutError.code || checkoutError.message);
+    sendJson(response, 503, { ok: false, status: 'payment_status_unavailable' });
+    return;
   }
 
   if (status === 'paid' && !currentSession.license_id) {
@@ -735,6 +797,7 @@ async function checkStatus(request, response) {
 }
 
 module.exports = {
+  assertLicenseCheckoutIdentity,
   checkStatus,
   createCheckout,
   fulfillPaidSession,
@@ -742,5 +805,7 @@ module.exports = {
   isCheckoutPaid,
   listPlans,
   paymongoRequest,
+  reconcileLicensePayment,
+  reconcileDeviceLicensePayments,
   updatePlan
 };

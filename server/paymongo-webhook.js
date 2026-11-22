@@ -4,7 +4,13 @@ const {
   decryptSecret,
   sendJson
 } = require('./_business-utils');
-const { fulfillPaidSession, isCheckoutPaid } = require('./license-payments');
+const {
+  assertLicenseCheckoutIdentity,
+  fulfillPaidSession,
+  getPaidCheckoutDetails,
+  isCheckoutPaid,
+  reconcileLicensePayment
+} = require('./license-payments');
 const { reconcilePayment } = require('./_native-qrph');
 
 function verifyWebhook(request, rawBody, secret = process.env.PAYMONGO_WEBHOOK_SECRET) {
@@ -93,10 +99,14 @@ function getCheckoutAttributes(checkoutSession) {
 }
 
 async function fulfillLicensePayment(supabase, payload, status, checkoutSession) {
+  // Business payment-intent events and Light purchases have separate handlers.
+  if (!checkoutSession?.id?.startsWith('cs_')
+    || (checkoutSession.type && checkoutSession.type !== 'checkout_session')) return false;
   const checkoutAttributes = getCheckoutAttributes(checkoutSession);
   const checkoutId = checkoutSession?.id || null;
   const referenceNumber = checkoutAttributes.reference_number || checkoutAttributes.referenceNumber || null;
   const metadata = checkoutAttributes.metadata || {};
+  if (metadata.product && metadata.product !== 'phototags_license') return false;
   const paymentSessionId = metadata.payment_session_id || metadata.paymentSessionId || null;
 
   if (!checkoutId && !referenceNumber && !paymentSessionId) {
@@ -105,7 +115,7 @@ async function fulfillLicensePayment(supabase, payload, status, checkoutSession)
 
   let query = supabase
     .from('license_payment_sessions')
-    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, reference_number, customer_email, license_id, payment_payload, updated_at')
+    .select('id, device_id, plan, amount, currency, status, paid_at, expires_at, reference_number, customer_email, license_id, paymongo_checkout_session_id, payment_payload, updated_at')
     .limit(1);
 
   if (paymentSessionId && /^[0-9a-f-]{36}$/i.test(paymentSessionId)) {
@@ -118,20 +128,26 @@ async function fulfillLicensePayment(supabase, payload, status, checkoutSession)
 
   const { data: rows, error: sessionError } = await query;
 
-  if (sessionError || !rows?.length) {
+  if (sessionError) throw sessionError;
+  if (!rows?.length) {
     return false;
   }
 
   const session = rows[0];
+  assertLicenseCheckoutIdentity(session, payload);
+  if (session.status === 'paid' && session.license_id) return true;
+
+  const paymentPayload = session.payment_payload?.plan_snapshot
+    ? { ...payload, plan_snapshot: session.payment_payload.plan_snapshot }
+    : payload;
 
   if (status !== 'paid') {
-    const paymentPayload = session.payment_payload?.plan_snapshot
-      ? { ...payload, plan_snapshot: session.payment_payload.plan_snapshot }
-      : payload;
     const { error: updateError } = await supabase
       .from('license_payment_sessions')
       .update({ status, payment_payload: paymentPayload })
-      .eq('id', session.id);
+      .eq('id', session.id)
+      .neq('status', 'paid')
+      .is('license_id', null);
 
     if (updateError) {
       throw updateError;
@@ -139,19 +155,18 @@ async function fulfillLicensePayment(supabase, payload, status, checkoutSession)
     return true;
   }
 
-  if (session.status === 'paid' && session.license_id) {
-    const { error: updateError } = await supabase
-      .from('license_payment_sessions')
-      .update({ payment_payload: payload })
-      .eq('id', session.id);
-
-    if (updateError) {
-      throw updateError;
-    }
-    return true;
+  const paidDetails = getPaidCheckoutDetails(payload);
+  if (isCheckoutPaid(payload) && paidDetails.amount !== null && paidDetails.currency) {
+    await fulfillPaidSession(supabase, session, payload);
+  } else {
+    // Some notifications omit payment details; re-fetch rather than treating
+    // the event name as proof of payment or acknowledging a lost activation.
+    const recovered = await reconcileLicensePayment(supabase, {
+      ...session,
+      paymongo_checkout_session_id: session.paymongo_checkout_session_id || checkoutId
+    });
+    if (!recovered.license_id) throw new Error('license_payment_confirmation_pending');
   }
-
-  await fulfillPaidSession(supabase, session, payload);
   return true;
 }
 

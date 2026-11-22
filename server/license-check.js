@@ -5,6 +5,7 @@ const {
   sendJson,
   validateDeviceId
 } = require('./_license-utils');
+const { reconcileDeviceLicensePayments } = require('./license-payments');
 
 module.exports = async function handler(request, response) {
   if (request.method !== 'POST') {
@@ -33,19 +34,35 @@ module.exports = async function handler(request, response) {
     return;
   }
 
-  const { data, error } = await supabase.rpc('check_license_for_device', {
+  const checkArguments = {
     p_device_id: deviceId,
     p_license_key: licenseKey,
     p_app_version: appVersion,
     p_platform: platform
-  });
+  };
+  let { data, error } = await supabase.rpc('check_license_for_device', checkArguments);
 
   if (error) {
     sendJson(response, 500, { ok: false, status: 'check_failed' });
     return;
   }
 
-  const result = Array.isArray(data) ? data[0] : data;
+  let result = Array.isArray(data) ? data[0] : data;
+  if (!result?.licensed && result?.status !== 'blocked' && platform === 'android') {
+    try {
+      if (await reconcileDeviceLicensePayments(supabase, deviceId)) {
+        ({ data, error } = await supabase.rpc('check_license_for_device', checkArguments));
+        if (error) {
+          sendJson(response, 500, { ok: false, status: 'check_failed' });
+          return;
+        }
+        result = Array.isArray(data) ? data[0] : data;
+      }
+    } catch (recoveryError) {
+      // A provider/database outage must never grant access or erase trial state.
+      console.error('Device license payment recovery unavailable', recoveryError.code || recoveryError.message);
+    }
+  }
   sendJson(response, 200, {
     ok: true,
     status: result?.status || 'unlicensed',

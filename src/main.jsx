@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   AlertCircle,
@@ -1527,7 +1527,7 @@ function ActivationPage() {
   const [status, setStatus] = useState(paymentSessionId ? 'checking' : 'loading');
   const [message, setMessage] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('');
-  const paidStorageKey = paymentSessionId ? `phototags.activation.paid.${paymentSessionId}` : '';
+  const retryPaymentRef = useRef(null);
   const toastText = useMemo(() => {
     if (status === 'creating') {
       return 'Preparing secure PayMongo checkout...';
@@ -1548,59 +1548,7 @@ function ActivationPage() {
     return '';
   }, [message, status]);
 
-  const markPaymentPaid = () => {
-    if (paidStorageKey) {
-      sessionStorage.setItem(paidStorageKey, 'true');
-    }
-
-    setPaymentStatus('paid');
-    setStatus('paid');
-    setMessage('Payment confirmed. Your PhotoTags license is active on this device.');
-  };
-
-  const checkPaymentStatus = async () => {
-    const response = await fetch('/api/license/payment-status', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, paymentSessionId })
-    });
-    const payload = await response.json();
-
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.status || 'status_unavailable');
-    }
-
-    setPaymentStatus(payload.status);
-
-    if (payload.status === 'paid') {
-      markPaymentPaid();
-      return payload.status;
-    }
-
-    if (['failed', 'expired', 'cancelled'].includes(payload.status)) {
-      setStatus('ready');
-      setMessage(`Payment ${payload.status}. You can choose a plan and try again.`);
-      return payload.status;
-    }
-
-    return payload.status;
-  };
-
-  const retryPaymentStatus = async () => {
-    setStatus('checking');
-    setMessage('');
-
-    try {
-      const nextStatus = await checkPaymentStatus();
-      if (nextStatus === 'pending') {
-        setStatus('ready');
-        setMessage('Payment is not confirmed yet. Please wait a moment, then check again.');
-      }
-    } catch {
-      setStatus('ready');
-      setMessage('Could not check the payment yet. Please try again in a moment.');
-    }
-  };
+  const retryPaymentStatus = () => retryPaymentRef.current?.();
 
   useEffect(() => {
     let isMounted = true;
@@ -1617,14 +1565,10 @@ function ActivationPage() {
         if (isMounted) {
           setPlans(payload.plans || []);
           setSelectedPlan((payload.plans || []).some((plan) => plan.id === 'monthly') ? 'monthly' : payload.plans?.[0]?.id || '');
-          if (paidStorageKey && sessionStorage.getItem(paidStorageKey) === 'true') {
-            markPaymentPaid();
-          } else {
-            setStatus(paymentSessionId ? 'checking' : 'ready');
-          }
+          if (!paymentSessionId) setStatus('ready');
         }
       } catch {
-        if (isMounted) {
+        if (isMounted && !paymentSessionId) {
           setStatus('error');
           setMessage('Plans are unavailable right now. Please try again shortly.');
         }
@@ -1635,76 +1579,114 @@ function ActivationPage() {
     return () => {
       isMounted = false;
     };
-  }, [paidStorageKey, paymentSessionId]);
+  }, [paymentSessionId]);
 
   useEffect(() => {
     if (!paymentSessionId || !deviceId) {
       return undefined;
     }
 
-    if (paidStorageKey && sessionStorage.getItem(paidStorageKey) === 'true') {
-      markPaymentPaid();
-      return undefined;
-    }
-
     let attempts = 0;
+    let failures = 0;
     let stopped = false;
+    let confirmed = false;
+    let inFlight = false;
+    let pollTimer;
+    let requestTimer;
+    let requestController;
+
+    const scheduleNextCheck = (delay, exhaustedMessage) => {
+      if (attempts < 60) {
+        pollTimer = window.setTimeout(pollPayment, delay);
+      } else {
+        setStatus('ready');
+        setMessage(exhaustedMessage);
+      }
+    };
 
     async function pollPayment() {
+      if (stopped || confirmed || inFlight) return;
+      window.clearTimeout(pollTimer);
+      inFlight = true;
       attempts += 1;
+      const controller = new AbortController();
+      requestController = controller;
+      requestTimer = window.setTimeout(() => controller.abort(), 15000);
       try {
+        const response = await fetch('/api/license/payment-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceId, paymentSessionId }),
+          signal: controller.signal
+        });
+        const payload = await response.json();
         if (stopped) return;
 
-        const nextStatus = await checkPaymentStatus();
-        if (stopped) return;
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.status || 'status_unavailable');
+        }
 
-        if (nextStatus === 'paid' || ['failed', 'expired', 'cancelled'].includes(nextStatus)) {
+        failures = 0;
+        setPaymentStatus(payload.status);
+        if (payload.status === 'paid') {
+          confirmed = true;
+          setStatus('paid');
+          setMessage('Payment confirmed. Your PhotoTags license is active on this device.');
           return;
         }
 
-        if (attempts < 60) {
-          window.setTimeout(pollPayment, 3000);
-        } else {
+        if (['failed', 'expired', 'cancelled'].includes(payload.status)) {
           setStatus('ready');
-          setMessage('Payment is still pending. Keep this page open or return to the app and check again.');
+          setMessage(`Payment ${payload.status}. If you already paid, check payment again before starting another checkout.`);
+          return;
         }
+
+        setStatus('checking');
+        setMessage('');
+        scheduleNextCheck(3000, 'Payment is still pending. Return to the app and check your license, or check payment again here.');
       } catch {
         if (!stopped) {
-          setStatus('ready');
-          setMessage('Could not check the payment yet. Please try again in a moment.');
+          failures += 1;
+          setStatus('checking');
+          setMessage('Payment confirmation is temporarily unavailable. Retrying automatically...');
+          scheduleNextCheck(Math.min(3000 * 2 ** Math.min(failures - 1, 3), 15000),
+            'Could not confirm the payment yet. Check payment again before starting another checkout.');
         }
+      } finally {
+        window.clearTimeout(requestTimer);
+        requestController = null;
+        inFlight = false;
       }
     }
 
-    pollPayment();
-    return () => {
-      stopped = true;
+    const restartChecks = () => {
+      if (stopped || confirmed || inFlight) return;
+      attempts = 0;
+      failures = 0;
+      setStatus('checking');
+      setMessage('');
+      pollPayment();
     };
-  }, [deviceId, paidStorageKey, paymentSessionId]);
-
-  useEffect(() => {
-    if (!paymentSessionId || !deviceId || status === 'paid') {
-      return undefined;
-    }
-
     const refreshIfVisible = () => {
-      if (document.visibilityState !== 'visible') {
-        return;
-      }
-
-      checkPaymentStatus().catch(() => {
-        setMessage('Could not check the payment yet. Please try again in a moment.');
-      });
+      if (document.visibilityState === 'visible') restartChecks();
     };
 
+    retryPaymentRef.current = restartChecks;
+    setPaymentStatus('pending');
+    restartChecks();
     window.addEventListener('focus', refreshIfVisible);
     document.addEventListener('visibilitychange', refreshIfVisible);
 
     return () => {
+      stopped = true;
+      retryPaymentRef.current = null;
+      window.clearTimeout(pollTimer);
+      window.clearTimeout(requestTimer);
+      requestController?.abort();
       window.removeEventListener('focus', refreshIfVisible);
       document.removeEventListener('visibilitychange', refreshIfVisible);
     };
-  }, [deviceId, paymentSessionId, status]);
+  }, [deviceId, paymentSessionId]);
 
   const startCheckout = async (event) => {
     event.preventDefault();
@@ -1875,7 +1857,7 @@ function ActivationPage() {
           </div>
         ) : (
           <div className="activation-payment-actions">
-            {paymentSessionId && status !== 'checking' && !['failed', 'expired', 'cancelled'].includes(paymentStatus) ? (
+            {paymentSessionId && status !== 'checking' ? (
               <button className="outline-button" type="button" onClick={retryPaymentStatus}>
                 <RefreshCw size={19} />
                 Check payment again

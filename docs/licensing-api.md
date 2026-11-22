@@ -68,7 +68,11 @@ Production requires these Vercel environment variables:
 - `PAYMONGO_WEBHOOK_SECRET`: the `whsk_...` signing secret for the configured webhook endpoint
 - `SITE_URL`: the public site origin, for example `https://phototags.vercel.app`
 
-Configure the PayMongo webhook endpoint as `https://phototags.vercel.app/api/paymongo/webhook` and subscribe it to `checkout_session.payment.paid`. The payment-status endpoint also reconciles the Checkout Session directly with PayMongo, so activation can recover when webhook delivery is delayed.
+Configure the PayMongo webhook endpoint as `https://phototags.vercel.app/api/paymongo/webhook` and subscribe it to `checkout_session.payment.paid`. Both the payment-status endpoint and an unlicensed Android device's `/api/license/check` reconcile saved Checkout Sessions directly with PayMongo. A customer who leaves the checkout browser can therefore recover activation through the installed APK's **Check License** button without paying again.
+
+Recovery verifies the saved checkout ID, paid amount and currency, plus reference/product/device/plan metadata when supplied. It can recover a confirmed payment even if an earlier callback marked the local session failed, cancelled or expired. Duplicate fulfillment converges on the same license and device activation; late negative callbacks cannot downgrade a fulfilled payment. Device checks examine at most three unresolved checkouts at a time and rotate by their last check timestamp, so abandoned checkouts cannot permanently hide another paid purchase. Provider requests time out after eight seconds; temporary outages do not grant access or discard trial state. Blocked devices and separate Light/business payment records are excluded from this recovery path.
+
+The activation page retries temporary confirmation errors with bounded backoff and offers **Check payment again** after automatic attempts stop or an earlier failure/expiry is reported. A browser redirect or locally cached success flag is not payment proof.
 
 After the user pays, the app should poll `POST /api/license/check` with the same `deviceId`. When `licensed` is `true`, unlock the app.
 
@@ -85,6 +89,12 @@ Available website checkout endpoints:
 - `POST /api/license/payment-status`
 
 The APK usually only needs `/activate` and `/api/license/check`.
+
+### Activation recovery release checks
+
+This recovery change needs the updated website frontend and server handlers deployed together. It does not require a database migration or an APK update. Keep the existing live `PAYMONGO_SECRET_KEY`, matching webhook signing secret and Supabase service-role configuration in the deployment; local placeholder credentials cannot verify production transactions.
+
+Run `npm test`, `npm run build`, and `node scripts/check-apk-activation.cjs` from the website root. The browser check uses the installed Playwright dependencies from the sibling `PhotoTagsReceipt_Booth_ALL` project (or the path passed as its first argument). These checks use isolated fixtures and mock provider transport, never live payments. After deployment, confirm a PayMongo test-mode purchase activates the same device when the checkout page is closed, and verify the live webhook is enabled for the production endpoint. For an existing affected purchase, use the original device's **Check License**; retain its checkout reference for support if provider confirmation remains unavailable.
 
 Current launch pricing is served by `GET /api/license/plans`:
 
