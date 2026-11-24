@@ -11,9 +11,23 @@
   background: rgba(0, 199, 119, 0.06);
 }
 
-.technical-support > div {
+.technical-support-copy {
   flex: 1 1 320px;
   min-width: 0;
+}
+
+.technical-support-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.technical-support-actions a {
+  justify-content: center;
+  white-space: normal;
 }
 
 .technical-support h2 {

@@ -32,7 +32,7 @@ import {
   X
 } from 'lucide-react';
 import './styles.css';
-import SupportContact from './SupportContact';
+import SupportContact, { FACEBOOK_PAGE_URL } from './SupportContact';
 import LightAdmin from './LightAdmin';
 import LightPage from './LightPage';
 import BusinessTransactionsSection from './BusinessTransactionsSection';
@@ -1129,6 +1129,7 @@ function App() {
       <footer className="site-footer">
         <span>PhotoTags</span>
         <div>
+          <a href={FACEBOOK_PAGE_URL} target="_blank" rel="noopener noreferrer">Facebook inquiries</a>
           <a href="mailto:support@phototags.app">Technical support: support@phototags.app</a>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/use-policy">Use Policy</a>
