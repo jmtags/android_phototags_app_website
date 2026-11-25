@@ -1,6 +1,6 @@
 ﻿{
-    "versionCode":  118,
-    "versionName":  "0.2.107",
+    "versionCode":  120,
+    "versionName":  "0.2.109",
     "apkUrl":  "https://www.phototags.app/PhotoTags.apk",
-    "message":  "PhotoTags 0.2.107: Full A4 Newspaper Booth designs with 1 to 4 shots for every template, richer headlines and story details, and newspaper Admin configuration."
+    "message":  "PhotoTags 0.2.109: Mode-specific vouchers with required booth selection, mode labels and cross-mode redemption protection. Existing vouchers require Admin mode assignment. Includes Newspaper Booth payment support."
 }
