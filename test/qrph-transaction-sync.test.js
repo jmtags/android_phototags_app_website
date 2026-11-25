@@ -23,3 +23,13 @@ test('unknown methods and invalid amounts remain rejected', () => {
   assert.ok(normalizeTransaction({ ...record, paymentMethod: 'unknown' }).error);
   assert.ok(normalizeTransaction({ ...record, amountCentavos: -1 }).error);
 });
+
+test('newspaper coin, voucher and QR Ph payments sync under their own mode', () => {
+  for (const paymentMethod of ['coin', 'voucher', 'qrph']) {
+    const result = normalizeTransaction({ ...record, mode: 'Newspaper Booth', paymentMethod, printsUsed: 1 });
+    assert.equal(result.error, undefined);
+    assert.equal(result.row.mode, 'Newspaper Booth');
+    assert.equal(result.row.prints_used, 1);
+    assert.equal(result.row.amount_centavos, 15000);
+  }
+});

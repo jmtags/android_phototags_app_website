@@ -3,7 +3,7 @@ import { RefreshCw, SlidersHorizontal } from 'lucide-react';
 import './business-transactions.css';
 
 const INITIAL = { dateFrom: '', dateTo: '', deviceId: 'all', mode: 'all', paymentMethod: 'all', status: 'all' };
-const MODES = ['Photobooth', 'ID Photo', 'Receiptbooth', 'Reprint'];
+const MODES = ['Photobooth', 'ID Photo', 'Receiptbooth', 'Newspaper Booth', 'Reprint'];
 const METHODS = ['coin', 'voucher', 'qrph', 'none'];
 const PRINT_LABELS = { submitted: 'Sent to printer', partial: 'Partially sent to printer', failed: 'Sending failed', unknown: 'Send outcome unknown' };
 const money = value => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0) / 100);

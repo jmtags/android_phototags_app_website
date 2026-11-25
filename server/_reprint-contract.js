@@ -1,4 +1,4 @@
-const SOURCE_MODES = ['Photobooth', 'ID Photo', 'Receiptbooth'];
+const SOURCE_MODES = ['Photobooth', 'ID Photo', 'Receiptbooth', 'Newspaper Booth'];
 const MODES = [...SOURCE_MODES, 'Reprint'];
 const METHODS = ['coin', 'voucher', 'qrph', 'none'];
 const PRINT_STATUSES = ['submitted', 'partial', 'failed', 'unknown'];

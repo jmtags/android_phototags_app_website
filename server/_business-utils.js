@@ -220,7 +220,7 @@ function validatePaymentInput({ amount, currency, mode }) {
     return 'invalid_currency';
   }
 
-  if (!['photobooth', 'photo_id', 'receiptbooth', 'reprint'].includes(mode)) {
+  if (!['photobooth', 'photo_id', 'receiptbooth', 'newspaper', 'reprint'].includes(mode)) {
     return 'invalid_mode';
   }
 

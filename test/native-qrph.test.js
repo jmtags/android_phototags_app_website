@@ -91,6 +91,27 @@ async function call(handler, body, token = TOKEN) {
 }
 const payment = () => ({ deviceId: 'device-one', requestId: REQUEST, mode: 'receiptbooth', amount: 15000, currency: 'PHP' });
 
+test('newspaper QR uses the existing merchant flow, preserves its mode, and reconciles payment once', async () => {
+  const env = setup();
+  const input = { ...payment(), mode: 'newspaper' };
+  const created = await call(create, input);
+  assert.equal(created.code, 201);
+  assert.equal(created.mode, 'newspaper');
+  assert.equal(created.amount, input.amount);
+  assert.equal(created.status, 'pending');
+  assert.equal(created.qrImageUrl, QR);
+  assert.equal(JSON.parse(env.calls[0].options.body).data.attributes.description, 'PhotoTags newspaper');
+  const retry = await call(create, input);
+  assert.equal(retry.paymentSessionId, created.paymentSessionId);
+  assert.equal(env.calls.filter(c => c.url.endsWith('/payment_intents')).length, 1);
+  assert.equal((await call(create, { ...input, mode: 'receiptbooth' })).code, 409);
+  env.setPaid();
+  const paid = await call(status, { deviceId: input.deviceId, paymentSessionId: created.paymentSessionId });
+  assert.equal(paid.status, 'paid');
+  assert.equal(paid.mode, 'newspaper');
+  assert.equal(paid.qrImageUrl, null);
+});
+
 test('native QR creation uses the paired merchant and returns no credentials; retry reuses its intent', async () => {
   const env = setup();
   const result = await call(create, payment());

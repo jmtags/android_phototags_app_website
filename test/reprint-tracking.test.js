@@ -265,3 +265,41 @@ test('deployed sync route collects reprints and business report returns their fu
   assert.equal(report.transactions[0].source_mode, 'Photobooth');
   assert.equal(report.transactions[0].transaction_id, item.transactionId);
 });
+
+test('newspaper migration accepts QR modes and syncs one A4 print for coin, voucher and QR Ph without duplicate revenue', async () => {
+  await pg.exec(`create table public.payment_sessions (
+    id uuid primary key default gen_random_uuid(), mode text not null,
+    constraint payment_sessions_mode check (mode in ('photobooth', 'photo_id', 'receiptbooth', 'reprint'))
+  );`);
+  const newspaperMigration = readFileSync('supabase/migrations/202611250001_newspaper_booth_payments.sql', 'utf8');
+  assert.ok(readFileSync('supabase/one_time_supabase_setup.sql', 'utf8').endsWith(newspaperMigration));
+  await pg.exec(newspaperMigration);
+  await pg.exec(newspaperMigration);
+  for (const mode of ['photobooth', 'photo_id', 'receiptbooth', 'newspaper', 'reprint']) {
+    await pg.query('insert into payment_sessions (mode) values ($1)', [mode]);
+  }
+  await assert.rejects(pg.query("insert into payment_sessions (mode) values ('unknown')"), /check constraint/);
+  const records = ['coin', 'voucher', 'qrph'].map(paymentMethod => ({
+    transactionId: randomUUID(), occurredAt: '2026-11-25T02:00:00Z', mode: 'Newspaper Booth',
+    paymentMethod, status: 'completed', amountCentavos: 15000, printsUsed: 1,
+    voucherCode: paymentMethod === 'voucher' ? 'NEWSPAPER-VOUCHER' : null
+  }));
+  const first = await send(records);
+  assert.deepEqual(first.accepted, records.map(r => r.transactionId));
+  assert.deepEqual(first.failed, []);
+  const retry = await send(records);
+  assert.deepEqual(retry.duplicates, records.map(r => r.transactionId));
+  const result = await report('mode=Newspaper+Booth&dateFrom=2026-11-25&dateTo=2026-11-25');
+  assert.equal(result.code, 200);
+  assert.equal(result.total, 3);
+  assert.equal(result.summary.recordedRevenueCentavos, 45000);
+  assert.equal(result.summary.coinPayments, 1);
+  assert.equal(result.summary.voucherPayments, 1);
+  assert.equal(result.summary.qrphPayments, 1);
+  assert.ok(result.transactions.every(row => row.mode === 'Newspaper Booth' && row.prints_used === 1));
+  const reprint = record({ sourceMode: 'Newspaper Booth', originalTransactionId: records[0].transactionId });
+  assert.deepEqual((await send([reprint])).accepted, [reprint.transactionId]);
+  assert.equal((await report('mode=Reprint')).transactions.find(r => r.transaction_id === reprint.transactionId).source_mode, 'Newspaper Booth');
+  await assert.rejects(pg.query(`insert into transactions (business_id, device_id, transaction_id, occurred_at, mode,
+    payment_method, status, amount_centavos, prints_used) values ($1, 'device-one', $2, now(), 'unknown', 'coin', 'completed', 15000, 1)`, [A, randomUUID()]), /check constraint/);
+});
