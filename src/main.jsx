@@ -1325,6 +1325,8 @@ function RatingStars({ rating, onChange, size = 18 }) {
 
 function AppVersionsSection() {
   const [selectedVersion, setSelectedVersion] = useState(null);
+  const [showAllVersions, setShowAllVersions] = useState(false);
+  const visibleVersions = showAllVersions ? appVersions : appVersions.slice(0, 3);
 
   useEffect(() => {
     if (!selectedVersion) {
@@ -1349,19 +1351,33 @@ function AppVersionsSection() {
       </div>
 
       <div className="app-version-layout">
-        <div className="version-list" role="list" aria-label="PhotoTags versions">
-          {appVersions.map((version) => (
+        <div className="version-list-column">
+          <div className="version-list" id="phototags-version-list" role="list" aria-label="PhotoTags versions">
+            {visibleVersions.map((version) => (
+              <button
+                className="version-button"
+                key={version.versionName}
+                type="button"
+                onClick={() => setSelectedVersion(version)}
+              >
+                <span>{version.label}</span>
+                <strong>v{version.versionName}</strong>
+                <small>Version code {version.versionCode} - {version.date}</small>
+              </button>
+            ))}
+          </div>
+          {appVersions.length > 3 && (
             <button
-              className="version-button"
-              key={version.versionName}
+              className="version-list-toggle"
               type="button"
-              onClick={() => setSelectedVersion(version)}
+              aria-expanded={showAllVersions}
+              aria-controls="phototags-version-list"
+              onClick={() => setShowAllVersions(!showAllVersions)}
             >
-              <span>{version.label}</span>
-              <strong>v{version.versionName}</strong>
-              <small>Version code {version.versionCode} - {version.date}</small>
+              {showAllVersions ? 'Show fewer versions' : 'See all versions'}
+              <ChevronRight size={16} aria-hidden="true" />
             </button>
-          ))}
+          )}
         </div>
 
         <article className="version-preview">

@@ -771,6 +771,27 @@ button:disabled {
   gap: 12px;
 }
 
+.version-list-column { min-width: 0; }
+
+.version-list-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: #69e7b6;
+  font-size: .88rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.version-list-toggle:hover { text-decoration: underline; }
+.version-list-toggle svg { transform: rotate(90deg); }
+.version-list-toggle[aria-expanded="true"] svg { transform: rotate(-90deg); }
+
 .version-button {
   display: grid;
   gap: 8px;
