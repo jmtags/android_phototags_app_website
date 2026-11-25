@@ -100,6 +100,8 @@ a {
   display: grid;
   gap: 4px;
   width: min(100%, 320px);
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 8px;
@@ -2766,6 +2768,12 @@ button:disabled {
 
 .activation-toast-error svg {
   color: #ff4c8d;
+}
+
+@media (max-width: 1400px) {
+  .site-header { grid-template-columns: 1fr auto; }
+  .nav-links { display: none; }
+  .menu-button { display: grid; }
 }
 
 @media (max-width: 1180px) {

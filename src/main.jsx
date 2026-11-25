@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import SupportContact, { FACEBOOK_PAGE_URL } from './SupportContact';
+import BoothExperiences from './BoothExperiences';
 import LightAdmin from './LightAdmin';
 import LightPage from './LightPage';
 import BusinessTransactionsSection from './BusinessTransactionsSection';
@@ -117,9 +118,58 @@ const HOME_LICENSE_PLAN_FALLBACK = [
 ];
 const appVersions = [
   {
+    versionName: '0.2.107',
+    versionCode: 118,
+    label: 'Latest release',
+    date: 'November 25, 2026',
+    summary: 'Newspaper Booth brings full A4 keepsakes to PhotoTags, with four designs and 1–4 shots per template. Guests can choose their experience from the customer mode menu.',
+    sections: [
+      {
+        title: 'Newspaper Booth',
+        items: [
+          'Choose The Daily Moment, The PhotoTags Times, Wanted, or The Everyday Icon, each with 1–4 photo layouts.',
+          'Create full A4 pages with headlines, story details, photo captions, signatures, and cute icons.',
+          'Reposition and zoom individual photos, use the configured retake limit, and save the finished page locally.',
+          'Print on a supported A4 inkjet printer and offer a finished-page download QR. QR uploads require internet.'
+        ]
+      },
+      {
+        title: 'Customer Mode Selection',
+        items: [
+          'Guests tap Start and choose Photobooth, Receiptbooth, ID Photo, or Newspaper Booth from the modes enabled by Admin.',
+          'Show or hide customer modes in Admin > Session > Customer Mode Menu. A single enabled mode opens directly.',
+          'Existing saved menus are preserved on upgrade. Enable Newspaper Booth to add it to an existing menu.',
+          'Printer and session settings are saved per mode, while camera source and countdown remain shared.'
+        ]
+      },
+      {
+        title: 'Newspaper Quick Setup',
+        items: [
+          'Save a starting newspaper design, A4 printer and color settings, and retake limit.',
+          'Check the A4 output with the newspaper test print in Admin > Print.'
+        ]
+      }
+    ]
+  },
+  {
+    versionName: '0.2.103',
+    versionCode: 114,
+    label: 'Previous release',
+    date: 'November 24, 2026',
+    summary: 'Customer mode selection for Photobooth, Receiptbooth, and ID Photo, with Admin visibility controls and saved printer settings per mode.',
+    sections: [{
+      title: 'A Customer-Friendly Start Menu',
+      items: [
+        'Let guests choose which enabled mode they want to use after Start.',
+        'Choose the visible modes in Admin and keep at least one mode enabled.',
+        'Save mode-specific printer settings while sharing the camera across modes.'
+      ]
+    }]
+  },
+  {
     versionName: '0.2.86',
     versionCode: 97,
-    label: 'Latest release',
+    label: 'Previous release',
     date: 'November 4, 2026',
     summary: 'New eye and eyewear stickers, direct photo adjustment, faster printing, improved Receiptbooth recovery, and reprint tracking with automatic portal synchronization.',
     sections: [
@@ -580,8 +630,8 @@ const appVersions = [
 const features = [
   {
     icon: Smartphone,
-    title: 'Android photobooth',
-    body: 'Run capture, preview, printing, gallery, and licensing from one Android phone or tablet.'
+    title: 'Customer mode menu',
+    body: 'Guests choose from four photo experiences after Start. Admin controls which modes are shown.'
   },
   {
     icon: Camera,
@@ -594,6 +644,11 @@ const features = [
     body: 'Create receipt-style keepsakes with landscape split template selection, portrait-friendly controls, and admin-locked templates.'
   },
   {
+    icon: ImageIcon,
+    title: 'Newspaper Booth',
+    body: 'Make a full A4 keepsake with four newspaper designs, 1–4 photos, signatures, and cute icons.'
+  },
+  {
     icon: UserSquare2,
     title: 'ID Photo Mode',
     body: 'Capture cleaner 2 x 2, 1 x 1, and mixed ID layouts with background options and print-ready output.'
@@ -602,11 +657,6 @@ const features = [
     icon: Printer,
     title: 'Direct printing',
     body: 'Print through supported Canon and Epson USB/OTG printers, including Epson L3210 borderless 4R workflows.'
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Licensed activation',
-    body: 'Activate devices through website checkout, QR Ph payment confirmation, and server-side license checks.'
   }
 ];
 
@@ -641,7 +691,7 @@ const receiptTemplates = [
 const steps = [
   {
     title: 'Choose a mode',
-    body: 'Start Photobooth, Receiptbooth, ID photo, saved gallery, or reprint flows from the Android app.',
+    body: 'Tap Start and choose Photobooth, Receiptbooth, ID Photo, or Newspaper Booth from the modes enabled by Admin.',
     image: '/assets/print-setup-transparent.png'
   },
   {
@@ -701,8 +751,8 @@ function getHomePlanIcon(planId, index) {
 
 const SITE_ORIGIN = 'https://phototags.vercel.app';
 const DEFAULT_SEO = {
-  title: 'PhotoTags | Android Photobooth, Receiptbooth, and ID Photo Kiosk',
-  description: 'PhotoTags turns Android phones and tablets into portable photobooth, Receiptbooth, and ID photo kiosks with custom layouts, direct printing, QR downloads, licensing, and business transaction sync.',
+  title: 'PhotoTags | Android Photobooth, Newspaper Booth & ID Photo',
+  description: 'One Android device, four customer modes: Photobooth, Receiptbooth, ID Photo, and Newspaper Booth. Create A4 newspaper keepsakes with 1–4 photos, direct printing, and QR downloads.',
   robots: 'index, follow, max-image-preview:large',
   image: `${SITE_ORIGIN}/assets/hero-mockup.png`,
   canonicalPath: '/'
@@ -859,6 +909,8 @@ function App() {
 
   const siteLinks = [
     ['#features', 'Features'],
+    ['#customer-modes', 'Modes'],
+    ['#newspaper-booth', 'Newspaper Booth'],
     ['#receiptbooth-templates', 'Templates'],
     ['#early-access', 'Early Access'],
     ['#app-versions', 'Versions'],
@@ -917,7 +969,7 @@ function App() {
           <h1>Your Android Phone. Your Complete Photo Booth Studio.</h1>
           <p className="hero-text">
             Capture, customize, print, and activate event-ready photo experiences without a computer.
-            Built for photobooths, receipt-style keepsakes, school IDs, and reprints.
+            Let guests choose Photobooth, Receiptbooth, ID Photo, or Newspaper Booth—including full A4 front pages with 1–4 photos.
           </p>
           <div className="hero-actions">
             <a className="primary-button" href="/api/download-apk">
@@ -969,6 +1021,8 @@ function App() {
         })}
       </section>
 
+      <BoothExperiences />
+
       <section className="receipt-templates-section" id="receiptbooth-templates">
         <div className="receipt-templates-copy">
           <p className="eyebrow">Receiptbooth Templates</p>
@@ -1002,7 +1056,7 @@ function App() {
       <section className="info-strip" id="printer-support">
         <div>
           <Grid2X2 />
-          <span>Photobooth, Receiptbooth, ID photo, gallery, and reprint modes</span>
+          <span>Four customer modes: Photobooth, Receiptbooth, ID Photo, and Newspaper Booth</span>
         </div>
         <div>
           <Printer />
@@ -1070,13 +1124,14 @@ function App() {
         </div>
         <div className="id-copy">
           <p className="eyebrow">Multiple photo experiences</p>
-          <h2>Ready for parties, pop-ups, receipt keepsakes, and quick ID photo jobs.</h2>
+          <h2>From A4 front-page keepsakes to quick ID photo jobs.</h2>
           <p>
             PhotoTags keeps the session simple for guests and practical for operators:
             guided capture, printer status, layout options, retakes, license checks, and print-ready output.
           </p>
           <div className="mini-list">
             <div><Camera /><span>Photobooth and Receiptbooth sessions</span></div>
+            <div><ImageIcon /><span>Newspaper Booth with four A4 designs and 1–4 shots</span></div>
             <div><ImageIcon /><span>Custom admin layouts and ID sheets</span></div>
             <div><Printer /><span>Direct Android printing and queue handling</span></div>
           </div>
@@ -1111,7 +1166,7 @@ function App() {
             );
           })}
           <div>
-            <ImageIcon /><span>Photobooth, ID photo, templates, stickers, QR downloads, gallery, printer, camera, and reprint tools</span>
+            <ImageIcon /><span>Photobooth, Receiptbooth, ID Photo, Newspaper Booth, templates, stickers, QR downloads, and reprint tools</span>
           </div>
           <a className="primary-button" href="/api/download-apk">
             <Download size={21} />
