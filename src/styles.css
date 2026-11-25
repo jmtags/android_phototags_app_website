@@ -2791,7 +2791,7 @@ button:disabled {
   color: #ff4c8d;
 }
 
-@media (max-width: 1400px) {
+@media (max-width: 1500px) {
   .site-header { grid-template-columns: 1fr auto; }
   .nav-links { display: none; }
   .menu-button { display: grid; }

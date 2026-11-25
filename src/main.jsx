@@ -34,6 +34,7 @@ import {
 import './styles.css';
 import SupportContact, { FACEBOOK_PAGE_URL } from './SupportContact';
 import BoothExperiences from './BoothExperiences';
+import UserManual from './UserManual';
 import LightAdmin from './LightAdmin';
 import LightPage from './LightPage';
 import BusinessTransactionsSection from './BusinessTransactionsSection';
@@ -915,6 +916,7 @@ function App() {
     ['#early-access', 'Early Access'],
     ['#app-versions', 'Versions'],
     ['#how-it-works', 'How It Works'],
+    ['#user-manual', 'Manual'],
     ['#printer-support', 'Printers'],
     ['#recommended-device', 'Device'],
     ['#id-photo', 'ID Photo'],
@@ -1175,6 +1177,8 @@ function App() {
         </div>
       </section>
 
+      <UserManual />
+
       <AppVersionsSection />
 
       <ReviewSection />
@@ -1185,6 +1189,7 @@ function App() {
         <span>PhotoTags</span>
         <div>
           <a href={FACEBOOK_PAGE_URL} target="_blank" rel="noopener noreferrer">Facebook inquiries</a>
+          <a href="#user-manual">User manual</a>
           <a href="mailto:support@phototags.app">Technical support: support@phototags.app</a>
           <a href="/privacy-policy">Privacy Policy</a>
           <a href="/use-policy">Use Policy</a>
