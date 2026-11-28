@@ -1,6 +1,6 @@
-﻿{
-    "versionCode":  120,
-    "versionName":  "0.2.109",
+{
+    "versionCode":  129,
+    "versionName":  "0.2.118",
     "apkUrl":  "https://www.phototags.app/PhotoTags.apk",
-    "message":  "PhotoTags 0.2.109: Mode-specific vouchers with required booth selection, mode labels and cross-mode redemption protection. Existing vouchers require Admin mode assignment. Includes Newspaper Booth payment support."
+    "message":  "PhotoTags 0.2.118: Create and save multiple event templates for Photobooth and Receipt Booth, with customer theme selection, visibility controls, and offline artwork storage."
 }
